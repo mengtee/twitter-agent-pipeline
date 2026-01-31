@@ -1,0 +1,32 @@
+{
+  "name": "twitter-agent-pipeline",
+  "version": "0.1.0",
+  "description": "Scrape trending tweets, rewrite with character voice via Claude, output for posting",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "scrape": "tsx src/index.ts scrape",
+    "generate": "tsx src/index.ts generate",
+    "review": "tsx src/index.ts review",
+    "run:pipeline": "tsx src/index.ts run",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^25.1.0",
+    "axios": "^1.13.4",
+    "commander": "^14.0.2",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
+  }
+}

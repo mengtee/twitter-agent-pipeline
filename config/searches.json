@@ -1,0 +1,25 @@
+{
+  "searches": [
+    {
+      "name": "prediction-markets",
+      "prompt": "Show me new and trending tweets about Prediction Markets",
+      "timeWindow": "12h",
+      "minViews": 1000,
+      "minLikes": 10,
+      "maxResults": 20
+    },
+    {
+      "name": "crypto-alpha",
+      "prompt": "Show me tweets about crypto trading alpha and market analysis",
+      "timeWindow": "24h",
+      "minViews": 500,
+      "maxResults": 15
+    },
+    {
+      "name": "polymarket",
+      "prompt": "Show me latest tweets from @polymarket @PolymarketIntel @GlydoAlerts about prediction market odds and whale activity",
+      "timeWindow": "24h",
+      "maxResults": 10
+    }
+  ]
+}

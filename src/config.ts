@@ -8,7 +8,9 @@ import {
   type PersonaConfig,
 } from "./types.js";
 
-const PROJECT_ROOT = resolve(import.meta.dirname, "..");
+const PROJECT_ROOT = process.env.PIPELINE_ROOT
+  ? resolve(process.env.PIPELINE_ROOT)
+  : resolve(import.meta.dirname, "..");
 
 dotenvConfig({ path: resolve(PROJECT_ROOT, ".env") });
 

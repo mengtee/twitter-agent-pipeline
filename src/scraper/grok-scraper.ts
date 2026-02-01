@@ -1,10 +1,10 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import type { SearchConfig, ScrapedTweet } from "../types.js";
 import { ScrapedTweetSchema } from "../types.js";
-import { z } from "zod";
+
 
 const GROK_API_URL = "https://api.x.ai/v1/responses";
-const GROK_MODEL = "grok-3-fast";
+const GROK_MODEL = "grok-4-1-fast";
 
 /**
  * Builds the system prompt that instructs Grok to return structured JSON.
@@ -181,29 +181,48 @@ export async function scrapeSearch(
     xSearchTool.allowed_x_handles = handles;
   }
 
+  // Responses API: system prompt goes in "instructions", not in input messages
   const body = {
     model: GROK_MODEL,
+    instructions: systemPrompt,
     input: [
-      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     tools: [xSearchTool],
   };
 
-  const response = await axios.post<GrokApiResponse>(GROK_API_URL, body, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    timeout: 60_000,
-  });
+  let response;
+  try {
+    response = await axios.post<GrokApiResponse>(GROK_API_URL, body, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      timeout: 60_000,
+    });
+  } catch (err) {
+    if (err instanceof AxiosError && err.response) {
+      const errData = err.response.data as Record<string, unknown>;
+      throw new Error(
+        `Grok API ${err.response.status}: ${JSON.stringify(errData)}`
+      );
+    }
+    throw err;
+  }
 
   // Extract text from response
+  let responseText = "";
+
   const outputMessage = response.data.output?.find(
     (o) => o.type === "message"
   );
-  const textContent = outputMessage?.content?.find((c) => c.type === "text");
-  const responseText = textContent?.text ?? "";
+  if (outputMessage?.content) {
+    // Responses API uses "output_text" as the content type
+    const textContent = outputMessage.content.find(
+      (c) => c.type === "output_text" || c.type === "text"
+    );
+    responseText = textContent?.text ?? "";
+  }
 
   const tweets = parseGrokResponse(responseText, search.name);
   const tokensUsed = {

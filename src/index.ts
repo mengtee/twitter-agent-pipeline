@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { loadConfig, loadSearches, loadPersona } from "./config.js";
+import { loadConfig, loadSearches } from "./config.js";
 import { scrapeAll } from "./scraper/grok-scraper.js";
 import {
   loadSeenUrls,
@@ -7,6 +7,21 @@ import {
   deduplicateTweets,
   saveScrapeResults,
 } from "./scraper/store.js";
+import { rewriteBatch } from "./processor/rewriter.js";
+import {
+  loadQueue,
+  saveQueue,
+  addScrapedToQueue,
+  markGenerated,
+  updateStatus,
+  getByStatus,
+  loadLatestScrapedTweets,
+} from "./output/queue.js";
+import {
+  formatQueueItem,
+  formatQueueSummary,
+  formatPreview,
+} from "./output/display.js";
 
 const program = new Command();
 
@@ -69,17 +84,25 @@ program
     // Save results
     const filepath = saveScrapeResults(newTweets);
 
+    // Add to queue
+    const queue = loadQueue();
+    addScrapedToQueue(queue, newTweets);
+    saveQueue(queue);
+
     console.log(`\n--- Results ---`);
     console.log(`Total found: ${allTweets.length}`);
     console.log(`New (deduplicated): ${newTweets.length}`);
     console.log(`Tokens used: ${totalTokens.input} in / ${totalTokens.output} out`);
     console.log(`Saved to: ${filepath}`);
+    console.log(`Added to queue (${queue.length} total items)`);
 
     // Preview first few tweets
     console.log(`\nTop tweets:`);
     for (const t of newTweets.slice(0, 5)) {
       console.log(`\n  @${t.handle} — ${t.views} views, ${t.likes} likes`);
-      console.log(`  "${t.text.slice(0, 120)}${t.text.length > 120 ? "..." : ""}"`);
+      console.log(
+        `  "${t.text.slice(0, 120)}${t.text.length > 120 ? "..." : ""}"`
+      );
       console.log(`  ${t.url}`);
     }
     if (newTweets.length > 5) {
@@ -91,36 +114,149 @@ program
 program
   .command("generate")
   .description("Rewrite scraped tweets using Claude with persona voice")
-  .action(async () => {
-    const persona = loadPersona();
-    console.log(`Loaded persona: ${persona.name}`);
-    console.log(`  Voice: ${persona.voice.tone}`);
-    console.log(`  Rules: ${persona.rules.length}`);
-    console.log("\n[rewriter not yet implemented — Stage 4]");
+  .option(
+    "-m, --model <model>",
+    "OpenRouter model ID",
+    "anthropic/claude-sonnet-4"
+  )
+  .option("--from-file <file>", "Load tweets from a specific scraped file")
+  .action(async (opts: { model: string; fromFile?: string }) => {
+    const config = loadConfig();
+    const persona = config.persona;
+
+    console.log(`Persona: ${persona.name}`);
+    console.log(`Model: ${opts.model}`);
+
+    // Load tweets to rewrite
+    const queue = loadQueue();
+    let tweetsToRewrite = getByStatus(queue, "scraped").map(
+      (q) => q.scrapedTweet
+    );
+
+    if (tweetsToRewrite.length === 0) {
+      // Fallback: load from latest scraped file
+      tweetsToRewrite = loadLatestScrapedTweets();
+      if (tweetsToRewrite.length > 0) {
+        console.log(
+          `No scraped items in queue. Loaded ${tweetsToRewrite.length} from latest scrape file.`
+        );
+        addScrapedToQueue(queue, tweetsToRewrite);
+        tweetsToRewrite = getByStatus(queue, "scraped").map(
+          (q) => q.scrapedTweet
+        );
+      }
+    }
+
+    if (tweetsToRewrite.length === 0) {
+      console.log("\nNo tweets to rewrite. Run 'scrape' first.");
+      return;
+    }
+
+    console.log(`\nRewriting ${tweetsToRewrite.length} tweets...\n`);
+
+    const { results, skipped, totalTokens } = await rewriteBatch(
+      config.openrouterApiKey,
+      persona,
+      tweetsToRewrite,
+      opts.model
+    );
+
+    // Update queue with rewrites
+    for (const r of results) {
+      markGenerated(queue, r.tweet.url, r.rewritten, r.confidence, r.hashtags);
+    }
+    saveQueue(queue);
+
+    console.log(`\n--- Generate Results ---`);
+    console.log(`Rewritten: ${results.length}`);
+    console.log(`Skipped: ${skipped}`);
+    console.log(
+      `Tokens: ${totalTokens.input} in / ${totalTokens.output} out`
+    );
+    console.log(`Queue updated.`);
   });
 
 // --- review ---
 program
   .command("review")
   .description("Review generated tweets side-by-side with originals")
-  .action(async () => {
-    console.log("[review not yet implemented — Stage 5]");
+  .option(
+    "-s, --status <status>",
+    "Filter by status (generated, approved, all)",
+    "generated"
+  )
+  .action(async (opts: { status: string }) => {
+    const queue = loadQueue();
+
+    const items =
+      opts.status === "all"
+        ? queue.filter((q) => q.rewrittenTweet)
+        : getByStatus(queue, opts.status as "generated");
+
+    if (items.length === 0) {
+      console.log(
+        `\nNo ${opts.status} tweets to review. Run 'generate' first.`
+      );
+      return;
+    }
+
+    console.log(`\nShowing ${items.length} ${opts.status} tweet(s):`);
+    for (let i = 0; i < items.length; i++) {
+      console.log(formatQueueItem(items[i], i));
+    }
   });
 
 // --- approve ---
 program
-  .command("approve <id>")
-  .description("Mark a generated tweet as approved for posting")
-  .action(async (id: string) => {
-    console.log(`[approve not yet implemented — Stage 5] id=${id}`);
+  .command("approve")
+  .description("Mark tweet(s) as approved for posting")
+  .argument("<ids...>", "Tweet queue IDs to approve (or 'all')")
+  .action(async (ids: string[]) => {
+    const queue = loadQueue();
+    let count = 0;
+
+    if (ids.includes("all")) {
+      for (const item of getByStatus(queue, "generated")) {
+        updateStatus(queue, item.id, "approved");
+        count++;
+      }
+    } else {
+      for (const id of ids) {
+        if (updateStatus(queue, id, "approved")) {
+          count++;
+        } else {
+          console.error(`  Not found: ${id}`);
+        }
+      }
+    }
+
+    saveQueue(queue);
+    console.log(`Approved ${count} tweet(s).`);
   });
 
 // --- list ---
 program
   .command("list")
   .description("Show all tweets in the queue with their status")
-  .action(async () => {
-    console.log("[list not yet implemented — Stage 5]");
+  .option("-s, --status <status>", "Filter by status")
+  .action(async (opts: { status?: string }) => {
+    const queue = loadQueue();
+
+    if (queue.length === 0) {
+      console.log("\nQueue is empty. Run 'scrape' to get started.");
+      return;
+    }
+
+    console.log(formatQueueSummary(queue));
+
+    const items = opts.status
+      ? getByStatus(queue, opts.status as "scraped")
+      : queue;
+
+    console.log("");
+    for (const item of items) {
+      console.log(formatPreview(item));
+    }
   });
 
 // --- config ---
@@ -157,9 +293,78 @@ program
 program
   .command("run")
   .description("Run the full pipeline: scrape → generate → review")
-  .action(async () => {
-    console.log("Running full pipeline...\n");
-    console.log("[pipeline not yet implemented — Stages 2-5]");
+  .option(
+    "-m, --model <model>",
+    "OpenRouter model ID for rewriting",
+    "anthropic/claude-sonnet-4"
+  )
+  .action(async (opts: { model: string }) => {
+    const config = loadConfig();
+
+    // Step 1: Scrape
+    console.log("=== Step 1: Scrape ===\n");
+    const { allTweets, totalTokens: scrapeTokens } = await scrapeAll(
+      config.xaiApiKey,
+      config.searches
+    );
+
+    const seen = loadSeenUrls();
+    const newTweets = deduplicateTweets(allTweets, seen);
+    saveSeenUrls(seen);
+
+    if (newTweets.length === 0) {
+      console.log("No new tweets found. Pipeline complete.");
+      return;
+    }
+
+    saveScrapeResults(newTweets);
+    const queue = loadQueue();
+    addScrapedToQueue(queue, newTweets);
+    console.log(`Found ${newTweets.length} new tweets.\n`);
+
+    // Step 2: Generate
+    console.log("=== Step 2: Generate ===\n");
+    console.log(`Persona: ${config.persona.name} | Model: ${opts.model}\n`);
+
+    const tweetsToRewrite = getByStatus(queue, "scraped").map(
+      (q) => q.scrapedTweet
+    );
+
+    const { results, skipped, totalTokens: genTokens } = await rewriteBatch(
+      config.openrouterApiKey,
+      config.persona,
+      tweetsToRewrite,
+      opts.model
+    );
+
+    for (const r of results) {
+      markGenerated(queue, r.tweet.url, r.rewritten, r.confidence, r.hashtags);
+    }
+    saveQueue(queue);
+
+    // Step 3: Review
+    console.log("\n=== Step 3: Review ===\n");
+    const generated = getByStatus(queue, "generated");
+
+    if (generated.length === 0) {
+      console.log("No rewrites generated.");
+    } else {
+      for (let i = 0; i < generated.length; i++) {
+        console.log(formatQueueItem(generated[i], i));
+      }
+    }
+
+    // Summary
+    console.log("\n=== Pipeline Summary ===");
+    console.log(`Scraped: ${newTweets.length} tweets`);
+    console.log(`Rewritten: ${results.length} | Skipped: ${skipped}`);
+    console.log(
+      `Tokens: ${scrapeTokens.input + genTokens.input} in / ${scrapeTokens.output + genTokens.output} out`
+    );
+    console.log(formatQueueSummary(queue));
+    console.log(
+      `\nRun 'approve <id>' or 'approve all' to mark tweets for posting.`
+    );
   });
 
 program.parse();

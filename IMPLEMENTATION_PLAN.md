@@ -255,7 +255,7 @@ tweet links"). The Grok API supports multi-turn chat.
 - Prompt builder produces valid prompts
 - Examples are included in system prompt
 
-**Status:** Not Started
+**Status:** Complete
 
 ---
 
@@ -300,7 +300,7 @@ interface RewrittenTweet {
 - Error handling / retry logic
 - Cost tracking accumulation
 
-**Status:** Not Started
+**Status:** Complete
 
 ---
 
@@ -344,7 +344,7 @@ scraped → generated → reviewed → approved → posted
 - JSON file persistence
 - CLI argument parsing
 
-**Status:** Not Started
+**Status:** Complete
 
 ---
 

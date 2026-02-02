@@ -5,7 +5,6 @@ import {
   SearchesFileSchema,
   PersonaConfigSchema,
   ScrapedTweetSchema,
-  QueueItemSchema,
 } from "../src/types.js";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -105,58 +104,3 @@ describe("ScrapedTweet schema", () => {
   });
 });
 
-describe("QueueItem schema", () => {
-  it("validates a scraped queue item", () => {
-    const item = {
-      id: "q-001",
-      status: "scraped" as const,
-      scrapedTweet: {
-        id: "123",
-        text: "test tweet",
-        author: "Author",
-        handle: "@author",
-        likes: 10,
-        retweets: 5,
-        views: 1000,
-        replies: 2,
-        url: "https://x.com/author/status/123",
-        postedAt: "2026-01-30T06:00:00Z",
-        scrapedAt: "2026-01-30T07:00:00Z",
-        searchName: "test",
-      },
-      createdAt: "2026-01-30T07:00:00Z",
-      updatedAt: "2026-01-30T07:00:00Z",
-    };
-    const result = QueueItemSchema.parse(item);
-    expect(result.status).toBe("scraped");
-    expect(result.rewrittenTweet).toBeUndefined();
-  });
-
-  it("validates a generated queue item", () => {
-    const item = {
-      id: "q-002",
-      status: "generated" as const,
-      scrapedTweet: {
-        id: "456",
-        text: "original tweet",
-        author: "Author",
-        handle: "@author",
-        likes: 50,
-        retweets: 10,
-        views: 2000,
-        replies: 5,
-        url: "https://x.com/author/status/456",
-        postedAt: "2026-01-30T06:00:00Z",
-        scrapedAt: "2026-01-30T07:00:00Z",
-        searchName: "test",
-      },
-      rewrittenTweet: "my hot take on this topic",
-      confidence: 8,
-      hashtags: ["crypto"],
-      createdAt: "2026-01-30T07:00:00Z",
-      updatedAt: "2026-01-30T07:30:00Z",
-    };
-    const result = QueueItemSchema.parse(item);
-    expect(result.rewrittenTweet).toBe("my hot take on this topic");
-  });
-});

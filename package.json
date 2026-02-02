@@ -12,7 +12,9 @@
     "review": "tsx src/index.ts review",
     "run:pipeline": "tsx src/index.ts run",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "web": "cd web && npm run dev",
+    "web:build": "cd web && npm run build"
   },
   "keywords": [],
   "author": "",

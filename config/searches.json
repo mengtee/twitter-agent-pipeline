@@ -1,14 +1,6 @@
 {
   "searches": [
     {
-      "name": "prediction-markets",
-      "prompt": "Show me new and trending tweets about Prediction Markets",
-      "timeWindow": "12h",
-      "minViews": 1000,
-      "minLikes": 10,
-      "maxResults": 20
-    },
-    {
       "name": "crypto-alpha",
       "prompt": "Show me tweets about crypto trading alpha and market analysis",
       "timeWindow": "24h",
@@ -20,6 +12,30 @@
       "prompt": "Show me latest tweets from @polymarket @PolymarketIntel @GlydoAlerts about prediction market odds and whale activity",
       "timeWindow": "24h",
       "maxResults": 10
+    },
+    {
+      "name": "What are the recent crypto events and news",
+      "prompt": "Show me all the recent tweets from the crypto event, I want to see different KOL content in the crytpo event",
+      "timeWindow": "24h",
+      "minViews": 1000,
+      "minLikes": 100,
+      "maxResults": 20
+    },
+    {
+      "name": "Crypto conferences and events",
+      "prompt": "show me recent tweets about KOL in attending crypto conference and events.",
+      "timeWindow": "24h",
+      "minViews": 1000,
+      "minLikes": 48,
+      "maxResults": 20
+    },
+    {
+      "name": "Polymarket event",
+      "prompt": "show me the recent polymarket insider trading events, find the top relevance tweets, and find those people who exposing them as an insider",
+      "timeWindow": "24h",
+      "minViews": 1000,
+      "minLikes": 50,
+      "maxResults": 20
     }
   ]
 }

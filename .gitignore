@@ -5,3 +5,5 @@ data/*.json
 !data/.gitkeep
 *.log
 .DS_Store
+web/.next/
+web/node_modules/

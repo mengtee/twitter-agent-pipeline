@@ -1,10 +1,9 @@
 import type { PersonaConfig, ScrapedTweet } from "../types.js";
 
 /**
- * Build the system prompt from persona config.
- * This tells Claude who it is and how to write.
+ * Build the shared persona context (identity, voice, topics, rules, examples).
  */
-export function buildSystemPrompt(persona: PersonaConfig): string {
+function buildPersonaContext(persona: PersonaConfig): string[] {
   const lines: string[] = [];
 
   lines.push(`You are ${persona.name}. ${persona.bio}`);
@@ -56,6 +55,16 @@ export function buildSystemPrompt(persona: PersonaConfig): string {
     }
   }
 
+  return lines;
+}
+
+/**
+ * Build the system prompt from persona config.
+ * This tells Claude who it is and how to write.
+ */
+export function buildSystemPrompt(persona: PersonaConfig): string {
+  const lines = buildPersonaContext(persona);
+
   // Output format
   lines.push("## Output Format");
   lines.push(
@@ -72,6 +81,71 @@ export function buildSystemPrompt(persona: PersonaConfig): string {
     "If the original tweet is not worth rewriting (off-topic, low quality, spam), return:"
   );
   lines.push(`{ "rewritten": "", "confidence": 0, "hashtags": [] }`);
+
+  return lines.join("\n");
+}
+
+/**
+ * Build the system prompt for session-based multi-tweet generation.
+ * Requests 3 tweet variations as a JSON array.
+ */
+export function buildSessionSystemPrompt(persona: PersonaConfig): string {
+  const lines = buildPersonaContext(persona);
+
+  lines.push("## Output Format");
+  lines.push(
+    "Based on the source tweets and instructions I give you, generate exactly 3 different tweet variations."
+  );
+  lines.push(
+    "Each variation should take a different angle or approach while staying in your voice."
+  );
+  lines.push("");
+  lines.push(
+    "Respond with ONLY a JSON array (no markdown, no code fences):"
+  );
+  lines.push("[");
+  lines.push(
+    `  { "text": "your tweet text", "confidence": 1-10, "hashtags": ["optional", "tags"] },`
+  );
+  lines.push(
+    `  { "text": "different angle", "confidence": 1-10, "hashtags": ["optional", "tags"] },`
+  );
+  lines.push(
+    `  { "text": "third variation", "confidence": 1-10, "hashtags": ["optional", "tags"] }`
+  );
+  lines.push("]");
+  lines.push("");
+  lines.push(
+    "confidence = how good you think each variation is (10 = banger, 1 = weak)."
+  );
+  lines.push("Each tweet must be under 280 characters.");
+
+  return lines.join("\n");
+}
+
+/**
+ * Build the user prompt for session-based multi-tweet generation.
+ */
+export function buildSessionUserPrompt(
+  tweets: ScrapedTweet[],
+  userPrompt: string
+): string {
+  const lines: string[] = [];
+
+  lines.push("Here are the source tweets:\n");
+  for (let i = 0; i < tweets.length; i++) {
+    const t = tweets[i];
+    lines.push(`--- Tweet ${i + 1} ---`);
+    lines.push(`@${t.handle} (${t.author})`);
+    lines.push(`"${t.text}"`);
+    lines.push(
+      `Engagement: ${t.views} views, ${t.likes} likes, ${t.retweets} RTs`
+    );
+    lines.push("");
+  }
+
+  lines.push("---\n");
+  lines.push(`Instructions: ${userPrompt}`);
 
   return lines.join("\n");
 }

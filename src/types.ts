@@ -67,35 +67,36 @@ export const PersonaConfigSchema = z.object({
 
 export type PersonaConfig = z.infer<typeof PersonaConfigSchema>;
 
-// --- Rewritten Tweet ---
+// --- Session Pipeline ---
 
-export const RewrittenTweetSchema = z.object({
-  original: ScrapedTweetSchema,
-  rewritten: z.string(),
+export const SessionStages = ["created", "scraped", "selected", "generated", "completed"] as const;
+export type SessionStage = (typeof SessionStages)[number];
+
+export const SessionSampleSchema = z.object({
+  id: z.string(),
+  text: z.string(),
   confidence: z.number().min(1).max(10),
   hashtags: z.array(z.string()).default([]),
 });
 
-export type RewrittenTweet = z.infer<typeof RewrittenTweetSchema>;
+export type SessionSample = z.infer<typeof SessionSampleSchema>;
 
-// --- Queue Item ---
-
-export type QueueStatus =
-  | "scraped"
-  | "generated"
-  | "reviewed"
-  | "approved"
-  | "posted";
-
-export const QueueItemSchema = z.object({
+export const SessionSchema = z.object({
   id: z.string(),
-  status: z.enum(["scraped", "generated", "reviewed", "approved", "posted"]),
-  scrapedTweet: ScrapedTweetSchema,
-  rewrittenTweet: z.string().optional(),
-  confidence: z.number().optional(),
-  hashtags: z.array(z.string()).default([]),
+  name: z.string().min(1),
+  stage: z.enum(SessionStages),
+  searchNames: z.array(z.string()).min(1),
+  scrapedTweets: z.array(ScrapedTweetSchema).default([]),
+  scrapeTokens: z.object({ input: z.number(), output: z.number() }).optional(),
+  selectedTweetIds: z.array(z.string()).default([]),
+  userPrompt: z.string().default(""),
+  personaSlug: z.string().optional(),
+  samples: z.array(SessionSampleSchema).default([]),
+  generateTokens: z.object({ input: z.number(), output: z.number() }).optional(),
+  chosenSampleId: z.string().optional(),
+  finalText: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 
-export type QueueItem = z.infer<typeof QueueItemSchema>;
+export type Session = z.infer<typeof SessionSchema>;

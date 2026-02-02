@@ -1,0 +1,33 @@
+{
+  "id": "0c6c9a71",
+  "name": "poly",
+  "stage": "scraped",
+  "searchNames": [
+    "Polymarket event"
+  ],
+  "scrapedTweets": [
+    {
+      "id": "2018028022046036383",
+      "text": "Insider pump. Bank Solvency",
+      "author": "TheMarketSniper - MBA, CMT. #HVFmethod",
+      "handle": "@themarketsniper",
+      "likes": 129,
+      "retweets": 13,
+      "views": 15415,
+      "replies": 7,
+      "url": "https://x.com/themarketsniper/status/2018028022046036383",
+      "postedAt": "2026-02-01T18:25:48Z",
+      "scrapedAt": "2026-02-02T06:13:14.868Z",
+      "searchName": "Polymarket event"
+    }
+  ],
+  "scrapeTokens": {
+    "input": 41825,
+    "output": 6960
+  },
+  "selectedTweetIds": [],
+  "userPrompt": "",
+  "samples": [],
+  "createdAt": "2026-02-02T06:06:37.089Z",
+  "updatedAt": "2026-02-02T06:13:14.869Z"
+}

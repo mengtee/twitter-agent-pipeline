@@ -131,7 +131,7 @@ describe("parseGrokResponse", () => {
 // --- buildUserPrompt ---
 
 describe("buildUserPrompt", () => {
-  it("includes time window in prompt", () => {
+  it("includes time window and max results in prompt", () => {
     const config: SearchConfig = {
       name: "test",
       prompt: "Show me trending tweets",
@@ -139,6 +139,7 @@ describe("buildUserPrompt", () => {
       maxResults: 20,
     };
     const prompt = buildUserPrompt(config);
+    expect(prompt).toContain("Search goal: Show me trending tweets");
     expect(prompt).toContain("last 12h");
     expect(prompt).toContain("Max results: 20");
   });
@@ -153,11 +154,11 @@ describe("buildUserPrompt", () => {
       maxResults: 10,
     };
     const prompt = buildUserPrompt(config);
-    expect(prompt).toContain("more than 1000 views");
-    expect(prompt).toContain("more than 50 likes");
+    expect(prompt).toContain("1000+ views");
+    expect(prompt).toContain("50+ likes");
   });
 
-  it("omits filters when not set", () => {
+  it("omits engagement line when no filters set", () => {
     const config: SearchConfig = {
       name: "test",
       prompt: "just a search",
@@ -165,7 +166,7 @@ describe("buildUserPrompt", () => {
       maxResults: 10,
     };
     const prompt = buildUserPrompt(config);
-    expect(prompt).not.toContain("Filter:");
+    expect(prompt).not.toContain("Minimum engagement");
   });
 });
 

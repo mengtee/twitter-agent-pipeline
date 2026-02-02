@@ -10,14 +10,39 @@ const GROK_MODEL = "grok-4-1-fast";
  * Builds the system prompt that instructs Grok to return structured JSON.
  */
 function buildSystemPrompt(): string {
-  return `You are a tweet research assistant. Your job is to search X (Twitter) and return results as structured JSON.
+  return `You are a tweet research assistant. Your job is to search X (Twitter) and return as many matching results as possible as structured JSON.
 
-IMPORTANT: Return ONLY a valid JSON array. No markdown, no code fences, no explanation text.
+SEARCH STRATEGY (CRITICAL — follow this exactly):
+1. Start by searching with the exact keywords from the user's query
+2. Then search again with synonyms, related terms, and alternative phrasings
+3. Then search with broader terms if you still haven't reached the requested count
+4. Keep searching with different queries until you reach the requested maximum number of results or truly exhaust all possibilities
+5. Combine and deduplicate results from ALL searches before returning
 
-Each object in the array must have exactly these fields:
+For example, if asked about "crypto conferences":
+- Search: "crypto conference"
+- Search: "web3 summit"
+- Search: "blockchain event"
+- Search: "crypto meetup"
+- Search: "token conference"
+- Search: "defi event"
+...and so on until you hit the max count.
+
+IMPORTANT: Do NOT stop after the first search. You must perform at least 3-5 different searches to maximize results. If your first search returns few results, broaden your search terms.
+
+QUALITY FILTERS:
+- Include original tweets, retweets, and quote tweets
+- EXCLUDE replies and comments — only include top-level tweets, not responses to other tweets
+- Skip obvious promotional spam, giveaway tweets, airdrop announcements, and engagement-bait
+- Always include the COMPLETE tweet text — never truncate or summarize
+
+OUTPUT FORMAT:
+Return ONLY a valid JSON array. No markdown, no code fences, no explanation text.
+
+Each object must have exactly these fields:
 {
   "id": "tweet status ID from the URL",
-  "text": "full tweet text",
+  "text": "full tweet text (complete, not truncated)",
   "author": "display name",
   "handle": "@username",
   "likes": number,
@@ -28,11 +53,12 @@ Each object in the array must have exactly these fields:
   "postedAt": "ISO 8601 timestamp or approximate time description"
 }
 
-Rules:
+RULES:
 - Include the direct tweet URL for every tweet
-- If exact engagement numbers aren't available, estimate from context (use 0 if unknown)
+- If exact engagement numbers aren't available, give your best estimate based on context
+- IMPORTANT: If the user specifies minimum engagement thresholds (e.g. "50+ likes"), ONLY include tweets that meet those thresholds. Do NOT include tweets with unknown or zero engagement when a minimum is specified.
 - Sort by engagement (views) descending
-- Only include tweets that match the user's criteria
+- No duplicate tweets in the results
 - If no tweets match, return an empty array: []`;
 }
 
@@ -40,23 +66,26 @@ Rules:
  * Builds the user prompt from a search config.
  */
 function buildUserPrompt(search: SearchConfig): string {
-  let prompt = search.prompt;
+  let prompt = `Search goal: ${search.prompt}`;
 
-  prompt += `\n\nTime window: last ${search.timeWindow}`;
+  prompt += `\n\nSearch with multiple different keyword variations and phrasings to find diverse results.`;
 
-  const filters: string[] = [];
-  if (search.minViews) {
-    filters.push(`more than ${search.minViews} views`);
-  }
-  if (search.minLikes) {
-    filters.push(`more than ${search.minLikes} likes`);
-  }
-  if (filters.length > 0) {
-    prompt += `\nFilter: only include tweets with ${filters.join(" and ")}`;
+  prompt += `\n\nConstraints:`;
+  prompt += `\n- Time window: last ${search.timeWindow}`;
+  prompt += `\n- Max results: ${search.maxResults}`;
+
+  if (search.minViews || search.minLikes) {
+    const filters: string[] = [];
+    if (search.minViews) {
+      filters.push(`${search.minViews}+ views`);
+    }
+    if (search.minLikes) {
+      filters.push(`${search.minLikes}+ likes`);
+    }
+    prompt += `\n- Minimum engagement: ${filters.join(", ")}`;
   }
 
-  prompt += `\nMax results: ${search.maxResults}`;
-  prompt += `\nInclude the direct tweet link for each result.`;
+  prompt += `\n\nReturn complete tweet text and direct tweet URLs for every result.`;
 
   return prompt;
 }
@@ -106,8 +135,39 @@ interface GrokApiResponse {
 }
 
 /**
+ * Attempt to salvage a truncated JSON array by extracting complete objects.
+ * When Grok hits its output token limit, the JSON array gets cut off mid-object.
+ * This finds all complete {...} objects in the text.
+ */
+function parseTruncatedJsonArray(text: string): unknown[] {
+  const objects: unknown[] = [];
+  let depth = 0;
+  let start = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        try {
+          objects.push(JSON.parse(text.slice(start, i + 1)));
+        } catch {
+          // skip malformed object
+        }
+        start = -1;
+      }
+    }
+  }
+
+  return objects;
+}
+
+/**
  * Parse Grok's response text into ScrapedTweet objects.
- * Handles cases where Grok wraps JSON in markdown code fences.
+ * Handles markdown code fences and truncated JSON arrays.
  */
 export function parseGrokResponse(
   responseText: string,
@@ -123,9 +183,18 @@ export function parseGrokResponse(
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    console.error("Failed to parse Grok response as JSON");
-    console.error("Raw response (first 500 chars):", cleaned.slice(0, 500));
-    return [];
+    // JSON.parse failed — likely truncated response from output token limit.
+    // Try to salvage complete objects from the truncated array.
+    console.warn("JSON parse failed, attempting to salvage truncated response...");
+    const salvaged = parseTruncatedJsonArray(cleaned);
+    if (salvaged.length > 0) {
+      console.warn(`Salvaged ${salvaged.length} complete tweet(s) from truncated response`);
+      parsed = salvaged;
+    } else {
+      console.error("Failed to parse Grok response as JSON");
+      console.error("Raw response (first 500 chars):", cleaned.slice(0, 500));
+      return [];
+    }
   }
 
   if (!Array.isArray(parsed)) {
@@ -184,12 +253,20 @@ export async function scrapeSearch(
   // Responses API: system prompt goes in "instructions", not in input messages
   const body = {
     model: GROK_MODEL,
+    max_output_tokens: 16000,
     instructions: systemPrompt,
     input: [
       { role: "user", content: userPrompt },
     ],
     tools: [xSearchTool],
   };
+
+  console.log(`\n--- Grok API Request [${search.name}] ---`);
+  console.log(`Model: ${GROK_MODEL}`);
+  console.log(`System prompt:\n${systemPrompt}`);
+  console.log(`User prompt:\n${userPrompt}`);
+  console.log(`Tools: ${JSON.stringify([xSearchTool], null, 2)}`);
+  console.log(`--- End Request ---\n`);
 
   let response;
   try {
@@ -198,7 +275,7 @@ export async function scrapeSearch(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      timeout: 60_000,
+      timeout: 180_000,
     });
   } catch (err) {
     if (err instanceof AxiosError && err.response) {
@@ -224,7 +301,25 @@ export async function scrapeSearch(
     responseText = textContent?.text ?? "";
   }
 
-  const tweets = parseGrokResponse(responseText, search.name);
+  console.log(`\n--- Grok API Response [${search.name}] ---`);
+  console.log(`Tokens: ${response.data.usage?.input_tokens ?? 0} in / ${response.data.usage?.output_tokens ?? 0} out`);
+  console.log(`Response text (first 2000 chars):\n${responseText.slice(0, 2000)}`);
+  if (responseText.length > 2000) console.log(`... (${responseText.length} total chars)`);
+  console.log(`--- End Response ---\n`);
+
+  const allParsed = parseGrokResponse(responseText, search.name);
+
+  // Enforce minimum engagement filters server-side (can't fully rely on LLM)
+  const tweets = allParsed.filter((t) => {
+    if (search.minViews && t.views < search.minViews) return false;
+    if (search.minLikes && t.likes < search.minLikes) return false;
+    return true;
+  });
+
+  if (tweets.length < allParsed.length) {
+    console.log(`  Filtered out ${allParsed.length - tweets.length} tweet(s) below engagement thresholds (minViews: ${search.minViews ?? "none"}, minLikes: ${search.minLikes ?? "none"})`);
+  }
+
   const tokensUsed = {
     input: response.data.usage?.input_tokens ?? 0,
     output: response.data.usage?.output_tokens ?? 0,

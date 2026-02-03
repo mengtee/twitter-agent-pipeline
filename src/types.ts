@@ -68,9 +68,29 @@ export const PersonaConfigSchema = z.object({
 
 export type PersonaConfig = z.infer<typeof PersonaConfigSchema>;
 
+// --- Trend Analysis ---
+
+export const ContentIdeaSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  angle: z.string(),
+  suggestedFormat: z.enum(["thread", "single", "poll", "media"]),
+  relevanceScore: z.number().min(1).max(10),
+});
+
+export type ContentIdea = z.infer<typeof ContentIdeaSchema>;
+
+export const TrendAnalysisSchema = z.object({
+  summary: z.string(),
+  trendingTopics: z.array(z.string()).default([]),
+  contentIdeas: z.array(ContentIdeaSchema).default([]),
+});
+
+export type TrendAnalysis = z.infer<typeof TrendAnalysisSchema>;
+
 // --- Session Pipeline ---
 
-export const SessionStages = ["created", "scraped", "selected", "generated", "completed"] as const;
+export const SessionStages = ["created", "scraped", "analyzed", "selected", "generated", "completed"] as const;
 export type SessionStage = (typeof SessionStages)[number];
 
 export const SessionSampleSchema = z.object({
@@ -90,6 +110,8 @@ export const SessionSchema = z.object({
   searchNames: z.array(z.string()).min(1),
   scrapedTweets: z.array(ScrapedTweetSchema).default([]),
   scrapeTokens: z.object({ input: z.number(), output: z.number() }).optional(),
+  analysis: TrendAnalysisSchema.optional(),
+  analyzeTokens: z.object({ input: z.number(), output: z.number() }).optional(),
   selectedTweetIds: z.array(z.string()).default([]),
   userPrompt: z.string().default(""),
   personaSlug: z.string().optional(),

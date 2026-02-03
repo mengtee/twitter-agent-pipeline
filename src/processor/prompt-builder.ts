@@ -196,3 +196,65 @@ export function buildTweetPrompt(tweet: ScrapedTweet): string {
 
   return lines.join("\n");
 }
+
+/**
+ * Build the prompt for trend analysis.
+ * Analyzes scraped tweets to identify trends and suggest content ideas.
+ */
+export function buildAnalysisPrompt(
+  searchNames: string[],
+  tweets: ScrapedTweet[]
+): string {
+  const tweetsJson = JSON.stringify(
+    tweets.map((t) => ({
+      text: t.text,
+      author: `@${t.handle}`,
+      engagement: { views: t.views, likes: t.likes, retweets: t.retweets },
+      searchName: t.searchName,
+    })),
+    null,
+    2
+  );
+
+  return `You are a content strategist analyzing trending tweets.
+
+## Context
+Search topics: ${searchNames.join(", ")}
+Total tweets analyzed: ${tweets.length}
+
+## Tweets Data
+${tweetsJson}
+
+## Tasks
+Analyze these tweets and identify patterns, emerging trends, and content opportunities.
+
+Return a JSON response with:
+
+1. **summary**: 2-3 paragraphs summarizing what's trending. What themes are emerging? What's capturing attention? What angles are working?
+
+2. **trendingTopics**: Array of top 5 topics/themes as strings, each with a brief explanation (e.g., "Topic: explanation of why it's trending")
+
+3. **contentIdeas**: Array of 5 content ideas that could perform well based on what's resonating, each with:
+   - title: A compelling hook/headline for the content
+   - description: What the content would cover (1-2 sentences)
+   - angle: The unique perspective or approach that makes it stand out
+   - suggestedFormat: One of "thread", "single", "poll", "media"
+   - relevanceScore: 1-10 rating of how likely this would resonate based on the data
+
+Return ONLY valid JSON in this exact format (no markdown, no code fences):
+{
+  "summary": "...",
+  "trendingTopics": ["Topic 1: explanation", "Topic 2: explanation", ...],
+  "contentIdeas": [
+    {
+      "title": "...",
+      "description": "...",
+      "angle": "...",
+      "suggestedFormat": "thread",
+      "relevanceScore": 8
+    }
+  ]
+}
+
+Be specific and actionable. Focus on what makes content viral in this space.`;
+}

@@ -10,6 +10,7 @@ import { TweetSelectCard } from "@/components/tweet-select-card";
 import { SampleCard } from "@/components/sample-card";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import type { ContentIdea } from "@pipeline/types.js";
 
 export default function SessionDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,6 +18,7 @@ export default function SessionDetailPage() {
   const { personas } = usePersonas();
 
   const scrapeSSE = useSSE(`/api/sessions/${id}/scrape`);
+  const analyzeSSE = useSSE(`/api/sessions/${id}/analyze`);
   const generateSSE = useSSE(`/api/sessions/${id}/generate`);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -43,12 +45,28 @@ export default function SessionDetailPage() {
     }
   }, [session?.stage, scrapeSSE]);
 
+  // Auto-start analyze when session is in "scraped" stage
+  const analyzeTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (session?.stage === "scraped" && !analyzeTriggeredRef.current) {
+      analyzeTriggeredRef.current = true;
+      analyzeSSE.start();
+    }
+  }, [session?.stage, analyzeSSE]);
+
   // Refresh session after scrape completes
   useEffect(() => {
     if (scrapeSSE.status === "done") {
       mutate();
     }
   }, [scrapeSSE.status, mutate]);
+
+  // Refresh session after analyze completes
+  useEffect(() => {
+    if (analyzeSSE.status === "done") {
+      mutate();
+    }
+  }, [analyzeSSE.status, mutate]);
 
   // Refresh session after generate completes
   useEffect(() => {
@@ -65,6 +83,11 @@ export default function SessionDetailPage() {
       return next;
     });
   }, []);
+
+  const handleUseIdea = (idea: ContentIdea) => {
+    // Pre-fill the prompt with the content idea
+    setPrompt(`${idea.title}\n\n${idea.description}\n\nAngle: ${idea.angle}`);
+  };
 
   const handleGenerate = async () => {
     if (selectedIds.size === 0 || !prompt.trim()) return;
@@ -120,13 +143,23 @@ export default function SessionDetailPage() {
       // Re-scrape: reset stage, then trigger scrape
       await updateSession(id, { stage: "created" });
       scrapeSSE.reset();
+      analyzeSSE.reset();
       generateSSE.reset();
+      analyzeTriggeredRef.current = false;
       await mutate();
       scrapeSSE.start();
     } else if (stage === "scraped") {
+      // Go back to analyze
+      analyzeSSE.reset();
+      generateSSE.reset();
+      analyzeTriggeredRef.current = false;
+      await updateSession(id, { stage: "scraped" });
+      await mutate();
+      analyzeSSE.start();
+    } else if (stage === "analyzed") {
       // Go back to tweet selection
       generateSSE.reset();
-      await updateSession(id, { stage: "scraped" });
+      await updateSession(id, { stage: "analyzed" });
       mutate();
     } else if (stage === "generated") {
       // Go back to choose sample
@@ -163,6 +196,22 @@ export default function SessionDetailPage() {
     }
   };
 
+  const getAnalyzeMessage = (e: SSEEvent): string => {
+    const d = e.data;
+    switch (e.event) {
+      case "started":
+        return `Analyzing ${d.tweetCount} tweets from ${(d.searchNames as string[])?.join(", ") ?? "searches"}...`;
+      case "analyzing":
+        return String(d.message);
+      case "complete":
+        return `Done! Found ${(d.analysis as { trendingTopics?: unknown[] })?.trendingTopics?.length ?? 0} trending topics`;
+      case "error":
+        return `Error: ${d.message}`;
+      default:
+        return JSON.stringify(d);
+    }
+  };
+
   const getGenerateMessage = (e: SSEEvent): string => {
     const d = e.data;
     switch (e.event) {
@@ -177,6 +226,13 @@ export default function SessionDetailPage() {
       default:
         return JSON.stringify(d);
     }
+  };
+
+  const formatLabels: Record<string, string> = {
+    thread: "Thread",
+    single: "Single Tweet",
+    poll: "Poll",
+    media: "Media Post",
   };
 
   return (
@@ -235,9 +291,127 @@ export default function SessionDetailPage() {
         </div>
       )}
 
-      {/* Stage: scraped — select tweets + write prompt */}
-      {session.stage === "scraped" && (
+      {/* Stage: scraped — analyzing */}
+      {(session.stage === "scraped" || analyzeSSE.status === "running") &&
+        session.stage !== "created" && (
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-zinc-400">
+                Analyzing Trends
+              </h3>
+              {analyzeSSE.status === "running" && (
+                <span className="text-xs text-purple-400 animate-pulse">
+                  Running...
+                </span>
+              )}
+              {analyzeSSE.status === "done" && (
+                <span className="text-xs text-green-400">Complete</span>
+              )}
+            </div>
+            <div className="space-y-1 font-mono text-xs">
+              {analyzeSSE.events.map((e, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "text-zinc-400",
+                    e.event === "error" && "text-red-400",
+                    e.event === "complete" && "text-green-400 font-medium"
+                  )}
+                >
+                  {getAnalyzeMessage(e)}
+                </div>
+              ))}
+              {analyzeSSE.events.length === 0 && (
+                <div className="text-zinc-500">Starting analysis...</div>
+              )}
+            </div>
+          </div>
+        )}
+
+      {/* Stage: analyzed — show analysis + select tweets + write prompt */}
+      {session.stage === "analyzed" && (
         <div className="space-y-6">
+          {/* Trend Analysis Results */}
+          {session.analysis && (
+            <div className="space-y-4">
+              {/* Summary */}
+              <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-4">
+                <h3 className="text-sm font-medium text-purple-400 mb-2">
+                  Trend Summary
+                </h3>
+                <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                  {session.analysis.summary}
+                </p>
+              </div>
+
+              {/* Trending Topics */}
+              {session.analysis.trendingTopics.length > 0 && (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                  <h3 className="text-sm font-medium text-zinc-400 mb-3">
+                    Trending Topics
+                  </h3>
+                  <div className="space-y-2">
+                    {session.analysis.trendingTopics.map((topic, i) => (
+                      <div
+                        key={i}
+                        className="text-sm text-zinc-300 flex items-start gap-2"
+                      >
+                        <span className="text-purple-400 font-medium shrink-0">
+                          {i + 1}.
+                        </span>
+                        <span>{topic}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Content Ideas */}
+              {session.analysis.contentIdeas.length > 0 && (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
+                  <h3 className="text-sm font-medium text-zinc-400 mb-3">
+                    Content Ideas
+                  </h3>
+                  <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {session.analysis.contentIdeas.map((idea, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h4 className="text-sm font-medium text-zinc-200">
+                            {idea.title}
+                          </h4>
+                          <span className="text-xs text-amber-400 shrink-0">
+                            {idea.relevanceScore}/10
+                          </span>
+                        </div>
+                        <p className="text-xs text-zinc-400 mb-2">
+                          {idea.description}
+                        </p>
+                        <p className="text-xs text-zinc-500 mb-3">
+                          <span className="text-zinc-400">Angle:</span>{" "}
+                          {idea.angle}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs px-2 py-0.5 rounded bg-zinc-700 text-zinc-400">
+                            {formatLabels[idea.suggestedFormat] || idea.suggestedFormat}
+                          </span>
+                          <button
+                            onClick={() => handleUseIdea(idea)}
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            Use this idea
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Tweet selection */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -276,8 +450,8 @@ export default function SessionDetailPage() {
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              rows={3}
-              placeholder="e.g. Combine these tweets into one insightful post about the current market..."
+              rows={4}
+              placeholder="e.g. Combine these tweets into one insightful post about the current market... (or click 'Use this idea' above)"
               className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-blue-500 resize-none"
             />
           </div>
@@ -326,7 +500,7 @@ export default function SessionDetailPage() {
 
       {/* Stage: selected — generating */}
       {(session.stage === "selected" || generateSSE.status === "running") &&
-        session.stage !== "scraped" && (
+        session.stage !== "analyzed" && (
           <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-zinc-400">

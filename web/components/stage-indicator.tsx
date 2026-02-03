@@ -3,7 +3,8 @@ import type { SessionStage } from "@pipeline/types.js";
 
 const stages: { key: SessionStage; label: string }[] = [
   { key: "created", label: "Scrape" },
-  { key: "scraped", label: "Select & Prompt" },
+  { key: "scraped", label: "Analyze" },
+  { key: "analyzed", label: "Select" },
   { key: "selected", label: "Generate" },
   { key: "generated", label: "Choose" },
   { key: "completed", label: "Done" },

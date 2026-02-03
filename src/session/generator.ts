@@ -49,6 +49,9 @@ export function parseSamplesResponse(
         hashtags: Array.isArray(item.hashtags)
           ? item.hashtags.map(String)
           : [],
+        ...(item.imageSuggestion
+          ? { imageSuggestion: String(item.imageSuggestion) }
+          : {}),
       }));
     }
 
@@ -61,6 +64,9 @@ export function parseSamplesResponse(
           hashtags: Array.isArray(parsed.hashtags)
             ? parsed.hashtags.map(String)
             : [],
+          ...(parsed.imageSuggestion
+            ? { imageSuggestion: String(parsed.imageSuggestion) }
+            : {}),
         },
       ];
     }

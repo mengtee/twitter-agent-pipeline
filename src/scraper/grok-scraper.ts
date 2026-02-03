@@ -50,8 +50,11 @@ Each object must have exactly these fields:
   "views": number,
   "replies": number,
   "url": "https://x.com/username/status/ID",
+  "imageUrls": ["https://pbs.twimg.com/media/...jpg", ...],
   "postedAt": "ISO 8601 timestamp or approximate time description"
 }
+
+imageUrls: array of direct image/media URLs attached to the tweet. Use the full pbs.twimg.com URL. If the tweet has no images, use an empty array [].
 
 RULES:
 - Include the direct tweet URL for every tweet

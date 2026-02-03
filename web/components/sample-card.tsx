@@ -37,6 +37,14 @@ export function SampleCard({
       <p className="text-sm text-zinc-200 whitespace-pre-wrap mb-3">
         {sample.text}
       </p>
+      {sample.imageSuggestion && (
+        <div className="flex items-start gap-2 mb-3 px-2.5 py-2 rounded-md bg-zinc-800/50 border border-zinc-700/50">
+          <span className="text-zinc-500 text-xs mt-0.5 shrink-0">🖼</span>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            {sample.imageSuggestion}
+          </p>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3 text-xs text-zinc-500">
           <span className={isOverLimit ? "text-red-400" : ""}>

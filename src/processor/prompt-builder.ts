@@ -99,24 +99,30 @@ export function buildSessionSystemPrompt(persona: PersonaConfig): string {
   lines.push(
     "Each variation should take a different angle or approach while staying in your voice."
   );
+  lines.push(
+    "For each variation, also suggest an image idea that would complement the tweet and boost engagement."
+  );
   lines.push("");
   lines.push(
     "Respond with ONLY a JSON array (no markdown, no code fences):"
   );
   lines.push("[");
   lines.push(
-    `  { "text": "your tweet text", "confidence": 1-10, "hashtags": ["optional", "tags"] },`
+    `  { "text": "your tweet text", "confidence": 1-10, "hashtags": ["optional", "tags"], "imageSuggestion": "brief description of an image that would pair well with this tweet" },`
   );
   lines.push(
-    `  { "text": "different angle", "confidence": 1-10, "hashtags": ["optional", "tags"] },`
+    `  { "text": "different angle", "confidence": 1-10, "hashtags": ["optional", "tags"], "imageSuggestion": "image idea for this variation" },`
   );
   lines.push(
-    `  { "text": "third variation", "confidence": 1-10, "hashtags": ["optional", "tags"] }`
+    `  { "text": "third variation", "confidence": 1-10, "hashtags": ["optional", "tags"], "imageSuggestion": "image idea for this variation" }`
   );
   lines.push("]");
   lines.push("");
   lines.push(
     "confidence = how good you think each variation is (10 = banger, 1 = weak)."
+  );
+  lines.push(
+    "imageSuggestion = a concise visual idea (e.g. 'chart showing BTC price action', 'screenshot of the dashboard UI', 'meme of a bear vs bull'). Be specific and actionable."
   );
   lines.push("Each tweet must be under 280 characters.");
 
@@ -124,14 +130,23 @@ export function buildSessionSystemPrompt(persona: PersonaConfig): string {
 }
 
 /**
+ * Content block for multimodal messages (text or image_url).
+ */
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+/**
  * Build the user prompt for session-based multi-tweet generation.
+ * Returns an array of content blocks (text + images) for multimodal LLMs.
  */
 export function buildSessionUserPrompt(
   tweets: ScrapedTweet[],
   userPrompt: string
-): string {
-  const lines: string[] = [];
+): ContentBlock[] {
+  const content: ContentBlock[] = [];
 
+  const lines: string[] = [];
   lines.push("Here are the source tweets:\n");
   for (let i = 0; i < tweets.length; i++) {
     const t = tweets[i];
@@ -141,13 +156,27 @@ export function buildSessionUserPrompt(
     lines.push(
       `Engagement: ${t.views} views, ${t.likes} likes, ${t.retweets} RTs`
     );
+    if (t.imageUrls && t.imageUrls.length > 0) {
+      lines.push(`Images: ${t.imageUrls.length} attached (shown below)`);
+    }
     lines.push("");
   }
 
   lines.push("---\n");
   lines.push(`Instructions: ${userPrompt}`);
 
-  return lines.join("\n");
+  content.push({ type: "text", text: lines.join("\n") });
+
+  // Append images from all selected tweets
+  for (const t of tweets) {
+    if (t.imageUrls && t.imageUrls.length > 0) {
+      for (const url of t.imageUrls) {
+        content.push({ type: "image_url", image_url: { url } });
+      }
+    }
+  }
+
+  return content;
 }
 
 /**

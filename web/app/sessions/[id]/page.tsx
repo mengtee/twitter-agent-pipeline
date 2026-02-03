@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useSession, updateSession } from "@/hooks/use-sessions";
 import { usePersonas } from "@/hooks/use-personas";
@@ -35,12 +35,13 @@ export default function SessionDetailPage() {
   }, [session]);
 
   // Auto-start scrape when session is in "created" stage
-  const scrapeStarted = scrapeSSE.status !== "idle";
+  const scrapeTriggeredRef = useRef(false);
   useEffect(() => {
-    if (session?.stage === "created" && !scrapeStarted) {
+    if (session?.stage === "created" && !scrapeTriggeredRef.current) {
+      scrapeTriggeredRef.current = true;
       scrapeSSE.start();
     }
-  }, [session?.stage, scrapeStarted, scrapeSSE]);
+  }, [session?.stage, scrapeSSE]);
 
   // Refresh session after scrape completes
   useEffect(() => {

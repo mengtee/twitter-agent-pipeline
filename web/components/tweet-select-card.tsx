@@ -42,6 +42,26 @@ export function TweetSelectCard({
         <p className="text-sm text-zinc-300 whitespace-pre-wrap line-clamp-3">
           {tweet.text}
         </p>
+        {tweet.imageUrls && tweet.imageUrls.length > 0 && (
+          <div className="flex gap-1.5 mt-1.5 overflow-x-auto">
+            {tweet.imageUrls.slice(0, 4).map((url, i) => (
+              <a
+                key={i}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt={`Tweet image ${i + 1}`}
+                  className="h-16 w-auto rounded border border-zinc-700 object-cover"
+                />
+              </a>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2 text-xs text-zinc-600 mt-1">
           <span>{tweet.searchName}</span>
           {tweet.url && (

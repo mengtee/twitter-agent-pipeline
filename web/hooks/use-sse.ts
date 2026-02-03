@@ -11,9 +11,17 @@ export function useSSE(url: string) {
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const abortRef = useRef<AbortController | null>(null);
+  const runningRef = useRef(false);
 
   const start = useCallback(
     async (body?: unknown) => {
+      // Prevent duplicate concurrent starts
+      if (runningRef.current) return;
+      runningRef.current = true;
+
+      // Abort any previous connection
+      abortRef.current?.abort();
+
       setStatus("running");
       setEvents([]);
 
@@ -78,6 +86,8 @@ export function useSSE(url: string) {
           ]);
           setStatus("error");
         }
+      } finally {
+        runningRef.current = false;
       }
     },
     [url]
@@ -85,10 +95,13 @@ export function useSSE(url: string) {
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
+    runningRef.current = false;
     setStatus("done");
   }, []);
 
   const reset = useCallback(() => {
+    abortRef.current?.abort();
+    runningRef.current = false;
     setEvents([]);
     setStatus("idle");
   }, []);

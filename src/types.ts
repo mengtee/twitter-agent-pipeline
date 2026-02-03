@@ -12,6 +12,7 @@ export const ScrapedTweetSchema = z.object({
   views: z.number().default(0),
   replies: z.number().default(0),
   url: z.string().url(),
+  imageUrls: z.array(z.string().url()).default([]),
   postedAt: z.string(),
   scrapedAt: z.string(),
   searchName: z.string(),
@@ -77,6 +78,7 @@ export const SessionSampleSchema = z.object({
   text: z.string(),
   confidence: z.number().min(1).max(10),
   hashtags: z.array(z.string()).default([]),
+  imageSuggestion: z.string().optional(),
 });
 
 export type SessionSample = z.infer<typeof SessionSampleSchema>;

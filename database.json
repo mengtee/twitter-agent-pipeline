@@ -1,0 +1,19 @@
+{
+  "dev": {
+    "driver": "pg",
+    "host": {"ENV": "PGHOST"},
+    "database": {"ENV": "PGDATABASE"},
+    "user": {"ENV": "PGUSER"},
+    "password": {"ENV": "PGPASSWORD"},
+    "port": {"ENV": "PGPORT"}
+  },
+  "production": {
+    "driver": "pg",
+    "host": {"ENV": "PGHOST"},
+    "database": {"ENV": "PGDATABASE"},
+    "user": {"ENV": "PGUSER"},
+    "password": {"ENV": "PGPASSWORD"},
+    "port": {"ENV": "PGPORT"},
+    "ssl": {"rejectUnauthorized": false}
+  }
+}

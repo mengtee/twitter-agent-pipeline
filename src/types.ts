@@ -137,3 +137,63 @@ export const SessionSchema = z.object({
 });
 
 export type Session = z.infer<typeof SessionSchema>;
+
+// --- Leaderboard Pipeline (Multi-Leaderboard) ---
+
+export const LeaderboardSourceSchema = z.object({
+  type: z.enum(["handle", "topic"]),
+  value: z.string().min(1), // @handle or search prompt
+  label: z.string().optional(), // display name
+});
+
+export type LeaderboardSource = z.infer<typeof LeaderboardSourceSchema>;
+
+export const TrendingTweetSchema = ScrapedTweetSchema.extend({
+  sourceType: z.enum(["handle", "topic"]),
+  sourceValue: z.string(),
+  engagementScore: z.number(), // views + likes*10 + retweets*5
+  rank: z.number().optional(),
+});
+
+export type TrendingTweet = z.infer<typeof TrendingTweetSchema>;
+
+// Each leaderboard is a self-contained entity with its own sources, tweets, and sync schedule
+export const LeaderboardSchema = z.object({
+  id: z.string(), // unique ID (e.g., "lb-abc123")
+  name: z.string().min(1), // display name (e.g., "AI Influencers")
+  sources: z.array(LeaderboardSourceSchema).min(1), // at least one source
+  tweets: z.array(TrendingTweetSchema).default([]),
+  // Scrape settings
+  maxTweetsPerSource: z.number().min(5).max(50).default(10),
+  minViews: z.number().optional(),
+  minLikes: z.number().optional(),
+  timeWindow: z.enum(TimeWindows).default("24h"),
+  // Sync state
+  lastScrapedAt: z.string().optional(),
+  nextScheduledAt: z.string().optional(),
+  isScrapingNow: z.boolean().default(false),
+  lastError: z.string().optional(),
+  tokensUsed: z.object({ input: z.number(), output: z.number() }).default({ input: 0, output: 0 }),
+  // Timestamps
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type Leaderboard = z.infer<typeof LeaderboardSchema>;
+
+// Global leaderboard settings (shared across all leaderboards)
+export const LeaderboardGlobalConfigSchema = z.object({
+  scrapeIntervalHours: z.number().min(1).max(168).default(24), // default 24h
+  cronEnabled: z.boolean().default(false),
+});
+
+export type LeaderboardGlobalConfig = z.infer<typeof LeaderboardGlobalConfigSchema>;
+
+export const CommentSuggestionSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  tone: z.enum(["witty", "insightful", "supportive"]),
+  confidence: z.number().min(1).max(10),
+});
+
+export type CommentSuggestion = z.infer<typeof CommentSuggestionSchema>;

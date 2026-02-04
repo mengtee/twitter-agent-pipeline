@@ -26,6 +26,8 @@ export default function SessionDetailPage() {
   const [personaSlug, setPersonaSlug] = useState("");
   const [finalText, setFinalText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Sync local state from session data
   useEffect(() => {
@@ -129,13 +131,21 @@ export default function SessionDetailPage() {
 
   const handleSaveFinal = async () => {
     setSaving(true);
-    await updateSession(id, { finalText });
-    setSaving(false);
-    mutate();
+    setSaved(false);
+    try {
+      await updateSession(id, { finalText });
+      await mutate();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(finalText);
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(finalText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleGoToStage = async (stage: string) => {
@@ -183,12 +193,21 @@ export default function SessionDetailPage() {
         return `Starting ${d.total} search(es)...`;
       case "progress":
         return `[${d.current}/${d.total}] Searching "${d.search}"...`;
+      case "scrape-progress":
+        if (d.type === "attempt") {
+          return `  → Trying ${d.window} window...`;
+        } else if (d.type === "expanding") {
+          return `  → ${String(d.message)}`;
+        } else if (d.type === "response") {
+          return `  → Grok returned ${d.parsedCount} tweets, ${d.filteredCount} after filtering`;
+        }
+        return String(d.message);
       case "search-complete":
-        return `"${d.search}" found ${d.found} tweets`;
+        return `✓ "${d.search}" found ${d.found} tweets${d.finalWindow ? ` (${d.finalWindow} window)` : ""}`;
       case "search-error":
-        return `"${d.search}" error: ${d.error}`;
+        return `✗ "${d.search}" error: ${d.error}`;
       case "complete":
-        return `Done! Found ${d.totalFound} tweets`;
+        return `Done! Found ${d.totalFound} tweets total`;
       case "error":
         return `Error: ${d.message}`;
       default:
@@ -398,8 +417,9 @@ export default function SessionDetailPage() {
                             {formatLabels[idea.suggestedFormat] || idea.suggestedFormat}
                           </span>
                           <button
+                            type="button"
                             onClick={() => handleUseIdea(idea)}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-blue-500/10"
                           >
                             Use this idea
                           </button>
@@ -591,10 +611,16 @@ export default function SessionDetailPage() {
               </h3>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={handleCopy}
-                  className="px-3 py-1.5 text-xs font-medium rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600 transition-colors"
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-medium rounded transition-colors",
+                    copied
+                      ? "bg-green-600 text-white"
+                      : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                  )}
                 >
-                  Copy
+                  {copied ? "Copied!" : "Copy"}
                 </button>
               </div>
             </div>
@@ -614,11 +640,17 @@ export default function SessionDetailPage() {
                 {finalText.length}/280
               </span>
               <button
+                type="button"
                 onClick={handleSaveFinal}
                 disabled={saving}
-                className="px-3 py-1.5 text-xs font-medium rounded bg-green-600 text-white hover:bg-green-500 transition-colors disabled:opacity-50"
+                className={cn(
+                  "px-3 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-50",
+                  saved
+                    ? "bg-green-500 text-white"
+                    : "bg-green-600 text-white hover:bg-green-500"
+                )}
               >
-                {saving ? "Saving..." : "Save Edit"}
+                {saving ? "Saving..." : saved ? "Saved!" : "Save Edit"}
               </button>
             </div>
           </div>

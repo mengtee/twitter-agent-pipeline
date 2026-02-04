@@ -1,5 +1,5 @@
 import { loadConfig, loadSearches } from "@pipeline/config.js";
-import { scrapeSearch } from "@pipeline/scraper/grok-scraper.js";
+import { scrapeSearch, type ScrapeProgress } from "@pipeline/scraper/grok-scraper.js";
 import { loadSession, saveSession } from "@pipeline/session/store.js";
 import type { ScrapedTweet } from "@pipeline/types.js";
 
@@ -57,7 +57,14 @@ export async function POST(
           });
 
           try {
-            const result = await scrapeSearch(config.xaiApiKey, search);
+            const onProgress = (progress: ScrapeProgress) => {
+              send("scrape-progress", {
+                search: search.name,
+                ...progress,
+              });
+            };
+
+            const result = await scrapeSearch(config.xaiApiKey, search, onProgress);
             allTweets.push(...result.tweets);
             totalTokens.input += result.tokensUsed.input;
             totalTokens.output += result.tokensUsed.output;
@@ -65,6 +72,7 @@ export async function POST(
             send("search-complete", {
               search: search.name,
               found: result.tweets.length,
+              finalWindow: result.finalWindow,
               tokens: result.tokensUsed,
             });
           } catch (err) {

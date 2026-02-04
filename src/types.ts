@@ -22,10 +22,13 @@ export type ScrapedTweet = z.infer<typeof ScrapedTweetSchema>;
 
 // --- Search Config ---
 
+export const TimeWindows = ["1h", "12h", "24h", "7d", "14d", "30d"] as const;
+export type TimeWindow = (typeof TimeWindows)[number];
+
 export const SearchConfigSchema = z.object({
   name: z.string().min(1),
   prompt: z.string().min(1),
-  timeWindow: z.enum(["1h", "12h", "24h", "7d"]),
+  timeWindow: z.enum(TimeWindows),
   minViews: z.number().optional(),
   minLikes: z.number().optional(),
   maxResults: z.number().default(20),

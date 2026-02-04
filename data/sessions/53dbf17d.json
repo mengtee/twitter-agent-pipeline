@@ -1,0 +1,159 @@
+{
+  "id": "53dbf17d",
+  "name": "test",
+  "stage": "completed",
+  "searchNames": [
+    "crypto-alpha"
+  ],
+  "scrapedTweets": [
+    {
+      "id": "2018548725992525934",
+      "text": "🚨 Altcoins to Watch | First Week of Feb 2026\n\n🔹 $ZIL — Cancun mainnet upgrade via hard fork this week. A bounce from $0.0039 could spark upside, but losing $0.0036 invalidates the bullish setup.\n\n🔥 $HYPE — Up 34% in 7 days, trading near $30. Decoupling from BTC (-0.49 correlation) supports strength. Break $30.84 → $34.31 in play. Lose $26.82 = risk to $23.69.\n\n🚀 $CC — One of the strongest performers, +30% weekly. Just hit its 3rd ATH at $0.195. Inflows remain strong; $0.215 is next if momentum holds.\n\n👀 ATH Watch: $RAIN, $KITE, $STABLE\n⚠️ High Liquidation Risk: $SOL, $HYPE, $TRX\n🐸 Meme Coin Momentum: $BUTTCOIN, $WHITEWHALE, $EGL1\n\n⚡ Volatility + unlocks + liquidations = stay sharp this week.\n\n#Crypto #Altcoins #CryptoTrading #DeFi #Bitcoin #Ethereum #Memecoins #CryptoNews #Web3 #BullMarket",
+      "author": "Wise Crypto",
+      "handle": "@WiseCrypto_",
+      "likes": 21,
+      "retweets": 17,
+      "views": 17759,
+      "replies": 30,
+      "url": "https://x.com/WiseCrypto_/status/2018548725992525934",
+      "imageUrls": [
+        "https://pbs.twimg.com/media/HANTXFObEAASUQz.jpg"
+      ],
+      "postedAt": "2026-02-03T04:54:53Z",
+      "scrapedAt": "2026-02-04T06:29:09.914Z",
+      "searchName": "crypto-alpha"
+    },
+    {
+      "id": "2018500768496574465",
+      "text": "I told you All long ago! \n#CYCLE #BTC is over until October of 2026 \nGreat bounce from 74.5K #BULLTRAP \nGood luck out there, I will pick more #ALTCOINS for you early",
+      "author": "Dr.Crypto",
+      "handle": "@DrCryptoAlpha",
+      "likes": 48,
+      "retweets": 0,
+      "views": 2062,
+      "replies": 0,
+      "url": "https://x.com/DrCryptoAlpha/status/2018500768496574465",
+      "imageUrls": [
+        "https://pbs.twimg.com/media/HAMnvvaXkAEdH2p.jpg"
+      ],
+      "postedAt": "2026-02-03T01:44:19Z",
+      "scrapedAt": "2026-02-04T06:29:09.914Z",
+      "searchName": "crypto-alpha"
+    },
+    {
+      "id": "2018572573643276536",
+      "text": "GM ☀️\n\nWoke up to this article on @RoboNetHQ and it could end up being my go to setup for trading. \n\nTheir MCP tool for AI Agents just went live and it helps you better your trading strategies across perps, prediction markets, RWAs, and Defi with more integration to follow.\n\nFrom prompting your strategies, backtesting on real data, \ndeploying them as immutable vaults and earn performance fees, it seems like an interesting tool for those who regularly trade. \n\nI've registered for the whitelist 👇\n\nhttps://t.co/YUU7UeILwv",
+      "author": "Jay.eth, CFA",
+      "handle": "@Jai0xCrypto",
+      "likes": 59,
+      "retweets": 1,
+      "views": 1168,
+      "replies": 68,
+      "url": "https://x.com/Jai0xCrypto/status/2018572573643276536",
+      "imageUrls": [],
+      "postedAt": "2026-02-03T06:29:39Z",
+      "scrapedAt": "2026-02-04T06:29:09.914Z",
+      "searchName": "crypto-alpha"
+    }
+  ],
+  "scrapeTokens": {
+    "input": 29727,
+    "output": 5234
+  },
+  "analysis": {
+    "summary": "The crypto-alpha space is currently focused on actionable trading intelligence and market timing strategies. There's strong engagement around specific altcoin calls with technical analysis backing, particularly for February 2026 opportunities. Users are gravitating toward content that provides concrete price levels, risk management parameters, and clear entry/exit strategies rather than generic market commentary. AI-powered trading tools are emerging as a significant trend, with traders seeking automated solutions for strategy development and backtesting. The community shows high interest in contrarian market timing calls, especially around cycle predictions and identifying when major trends might reverse.",
+    "trendingTopics": [
+      "Specific Altcoin Analysis: Detailed technical breakdowns with exact price levels and risk parameters are driving high engagement",
+      "Market Cycle Timing: Bold predictions about Bitcoin cycles and market tops/bottoms are capturing attention from alpha seekers",
+      "AI Trading Tools: Automated strategy development and backtesting platforms are gaining traction as traders seek technological edges",
+      "Risk Management Focus: Content emphasizing liquidation risks and proper position sizing is resonating in volatile markets",
+      "Meme Coin Momentum Tracking: Systematic approaches to identifying trending meme coins are becoming more sophisticated"
+    ],
+    "contentIdeas": [
+      {
+        "title": "🚨 5 Altcoins Breaking Key Resistance This Week + Exact Entry Levels",
+        "description": "Provide specific technical setups with clear buy zones, stop losses, and profit targets for trending altcoins. Include risk/reward ratios and position sizing recommendations.",
+        "angle": "Focus on actionable trades with precise parameters rather than vague bullish sentiment",
+        "suggestedFormat": "thread",
+        "relevanceScore": 9
+      },
+      {
+        "title": "Why This Bitcoin 'Bull Trap' Could Last Until October 2026 (Contrarian Take)",
+        "description": "Present a detailed contrarian analysis of current market structure with historical cycle comparisons and specific timeline predictions.",
+        "angle": "Go against mainstream bullish sentiment with data-backed cycle analysis",
+        "suggestedFormat": "thread",
+        "relevanceScore": 8
+      },
+      {
+        "title": "I Tested 3 AI Trading Bots for 30 Days - Here's What Actually Works",
+        "description": "Real performance comparison of AI trading tools with actual PnL screenshots and honest pros/cons of each platform.",
+        "angle": "Authentic testing results rather than promotional content about AI trading tools",
+        "suggestedFormat": "thread",
+        "relevanceScore": 8
+      },
+      {
+        "title": "High Liquidation Risk Alert: These 7 Coins Could Dump 30%+ This Week",
+        "description": "Identify overleveraged positions and coins with high liquidation clusters, providing specific levels where cascading sells could trigger.",
+        "angle": "Focus on risk management and protecting capital rather than just finding pumps",
+        "suggestedFormat": "thread",
+        "relevanceScore": 7
+      },
+      {
+        "title": "Meme Coin Alpha: My 3-Step System for Finding 10x Gems Before They Explode",
+        "description": "Break down a systematic approach for identifying meme coins with momentum before they trend, including specific metrics and tools to track.",
+        "angle": "Systematic approach to meme coin investing rather than random gambling",
+        "suggestedFormat": "thread",
+        "relevanceScore": 8
+      }
+    ]
+  },
+  "analyzeTokens": {
+    "input": 1187,
+    "output": 821
+  },
+  "selectedTweetIds": [
+    "2018548725992525934",
+    "2018500768496574465"
+  ],
+  "userPrompt": "🚨 5 Altcoins Breaking Key Resistance This Week + Exact Entry Levels\n\nProvide specific technical setups with clear buy zones, stop losses, and profit targets for trending altcoins. Include risk/reward ratios and position sizing recommendations.\n\nAngle: Focus on actionable trades with precise parameters rather than vague bullish sentiment",
+  "personaSlug": "guts",
+  "samples": [
+    {
+      "id": "3718b99a",
+      "text": "$HYPE at $30 with 3:1 R/R setup. entry: $29.50, stop: $26.82, target: $34.31. position size: 2% max. -0.49 btc correlation means this moves independent. degen responsibly",
+      "confidence": 8,
+      "hashtags": [
+        "altcoins",
+        "crypto"
+      ],
+      "imageSuggestion": "clean price chart showing HYPE's breakout level at $30 with clearly marked entry, stop loss, and target zones"
+    },
+    {
+      "id": "38d2661c",
+      "text": "$CC just printed its 3rd ATH at $0.195. next resistance $0.215 = 10% upside. but if you're chasing ATHs in feb 2026 you might be the exit liquidity. wait for pullback to $0.18",
+      "confidence": 9,
+      "hashtags": [
+        "altcoins"
+      ],
+      "imageSuggestion": "screenshot of CC price action showing the three ATH peaks with arrows pointing to each one"
+    },
+    {
+      "id": "666e103c",
+      "text": "everyone posting altcoin calls when btc is at 74.5k 'bulltrap'. the real alpha is knowing when NOT to trade. high liquidation risk on sol/hype/trx means someone's getting rekt this week",
+      "confidence": 7,
+      "hashtags": [
+        "crypto",
+        "trading"
+      ],
+      "imageSuggestion": "liquidation heatmap showing high-risk zones for SOL, HYPE, and TRX with red danger zones highlighted"
+    }
+  ],
+  "generateTokens": {
+    "input": 3418,
+    "output": 356
+  },
+  "chosenSampleId": "3718b99a",
+  "finalText": "$HYPE at $30 with 3:1 R/R setup. entry: $29.50, stop: $26.82, target: $34.31. position size: 2% max. -0.49 btc correlation means this moves independent. degen responsibly",
+  "createdAt": "2026-02-04T06:28:28.729Z",
+  "updatedAt": "2026-02-04T06:35:19.771Z"
+}

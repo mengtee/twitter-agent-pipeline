@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import type { SearchConfig, ScrapedTweet } from "../types.js";
+import type { SearchConfig, ScrapedTweet, TimeWindow } from "../types.js";
 import { ScrapedTweetSchema } from "../types.js";
 
 
@@ -111,8 +111,29 @@ function getFromDate(timeWindow: string): string {
     case "7d":
       now.setDate(now.getDate() - 7);
       break;
+    case "14d":
+      now.setDate(now.getDate() - 14);
+      break;
+    case "30d":
+      now.setDate(now.getDate() - 30);
+      break;
   }
   return now.toISOString().split("T")[0];
+}
+
+/**
+ * Get the next larger time window for fallback when no tweets are found.
+ */
+function getExpandedTimeWindow(current: TimeWindow): TimeWindow | null {
+  const expansion: Record<TimeWindow, TimeWindow | null> = {
+    "1h": "12h",
+    "12h": "24h",
+    "24h": "7d",
+    "7d": "14d",
+    "14d": "30d",
+    "30d": null,
+  };
+  return expansion[current];
 }
 
 /**
@@ -230,18 +251,30 @@ export function parseGrokResponse(
 export interface ScrapeResult {
   tweets: ScrapedTweet[];
   tokensUsed: { input: number; output: number };
+  finalWindow?: TimeWindow;
+}
+
+export interface ScrapeProgress {
+  type: "attempt" | "expanding" | "response";
+  window: TimeWindow;
+  message: string;
+  parsedCount?: number;
+  filteredCount?: number;
 }
 
 /**
- * Scrape tweets for a single search config via Grok API.
+ * Perform a single scrape request with specified time window.
  */
-export async function scrapeSearch(
+async function doScrapeRequest(
   apiKey: string,
-  search: SearchConfig
-): Promise<ScrapeResult> {
+  search: SearchConfig,
+  timeWindow: TimeWindow
+): Promise<{ tweets: ScrapedTweet[]; tokensUsed: { input: number; output: number }; parsedCount: number }> {
   const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt(search);
-  const fromDate = getFromDate(search.timeWindow);
+  // Override time window in the prompt
+  const modifiedSearch = { ...search, timeWindow };
+  const userPrompt = buildUserPrompt(modifiedSearch);
+  const fromDate = getFromDate(timeWindow);
   const handles = extractHandles(search.prompt);
 
   // Build x_search tool config
@@ -264,7 +297,7 @@ export async function scrapeSearch(
     tools: [xSearchTool],
   };
 
-  console.log(`\n--- Grok API Request [${search.name}] ---`);
+  console.log(`\n--- Grok API Request [${search.name}] (window: ${timeWindow}) ---`);
   console.log(`Model: ${GROK_MODEL}`);
   console.log(`System prompt:\n${systemPrompt}`);
   console.log(`User prompt:\n${userPrompt}`);
@@ -304,7 +337,7 @@ export async function scrapeSearch(
     responseText = textContent?.text ?? "";
   }
 
-  console.log(`\n--- Grok API Response [${search.name}] ---`);
+  console.log(`\n--- Grok API Response [${search.name}] (window: ${timeWindow}) ---`);
   console.log(`Tokens: ${response.data.usage?.input_tokens ?? 0} in / ${response.data.usage?.output_tokens ?? 0} out`);
   console.log(`Response text (first 2000 chars):\n${responseText.slice(0, 2000)}`);
   if (responseText.length > 2000) console.log(`... (${responseText.length} total chars)`);
@@ -328,7 +361,60 @@ export async function scrapeSearch(
     output: response.data.usage?.output_tokens ?? 0,
   };
 
-  return { tweets, tokensUsed };
+  return { tweets, tokensUsed, parsedCount: allParsed.length };
+}
+
+/**
+ * Scrape tweets for a single search config via Grok API.
+ * Automatically expands time window if no tweets are found.
+ */
+export async function scrapeSearch(
+  apiKey: string,
+  search: SearchConfig,
+  onProgress?: (progress: ScrapeProgress) => void
+): Promise<ScrapeResult> {
+  let currentWindow = search.timeWindow;
+  let totalTokens = { input: 0, output: 0 };
+
+  // Try with current time window, expand if no results
+  while (true) {
+    onProgress?.({
+      type: "attempt",
+      window: currentWindow,
+      message: `Searching with ${currentWindow} time window...`,
+    });
+
+    const result = await doScrapeRequest(apiKey, search, currentWindow);
+    totalTokens.input += result.tokensUsed.input;
+    totalTokens.output += result.tokensUsed.output;
+
+    onProgress?.({
+      type: "response",
+      window: currentWindow,
+      message: `Got ${result.parsedCount} tweets, ${result.tweets.length} after filtering`,
+      parsedCount: result.parsedCount,
+      filteredCount: result.tweets.length,
+    });
+
+    if (result.tweets.length > 0) {
+      return { tweets: result.tweets, tokensUsed: totalTokens, finalWindow: currentWindow };
+    }
+
+    // No tweets found - try expanding time window
+    const expandedWindow = getExpandedTimeWindow(currentWindow);
+    if (!expandedWindow) {
+      console.log(`  No tweets found and no further time window expansion available (was: ${currentWindow})`);
+      return { tweets: [], tokensUsed: totalTokens, finalWindow: currentWindow };
+    }
+
+    onProgress?.({
+      type: "expanding",
+      window: expandedWindow,
+      message: `No tweets with ${currentWindow}, expanding to ${expandedWindow}...`,
+    });
+    console.log(`  No tweets found with ${currentWindow} window, expanding to ${expandedWindow}...`);
+    currentWindow = expandedWindow;
+  }
 }
 
 /**

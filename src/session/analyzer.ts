@@ -1,9 +1,26 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import type { ScrapedTweet, TrendAnalysis } from "../types.js";
 import { buildAnalysisPrompt } from "../processor/prompt-builder.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 2000;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof AxiosError) {
+    if (err.response?.status && err.response.status >= 500) return true;
+    if (err.response?.status === 429) return true;
+    if (err.code && ["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "EPIPE"].includes(err.code)) return true;
+  }
+  return false;
+}
 
 interface OpenRouterResponse {
   choices: Array<{
@@ -101,24 +118,62 @@ export async function analyzeTweets(
 ): Promise<AnalyzeResult> {
   const prompt = buildAnalysisPrompt(searchNames, tweets);
 
-  const response = await axios.post<OpenRouterResponse>(
-    OPENROUTER_URL,
-    {
-      model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 2500,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/twitter-agent-pipeline",
-        "X-Title": "Tweet Pipeline",
-      },
-      timeout: 60_000,
+  let response;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[Analyzer] Attempt ${attempt}/${MAX_RETRIES} (model: ${model})`);
+
+      response = await axios.post<OpenRouterResponse>(
+        OPENROUTER_URL,
+        {
+          model,
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.7,
+          max_tokens: 2500,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/twitter-agent-pipeline",
+            "X-Title": "Tweet Pipeline",
+          },
+          timeout: 60_000,
+        }
+      );
+      break; // Success
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (err instanceof AxiosError) {
+        const status = err.response?.status;
+        const errorBody = err.response?.data;
+
+        console.error(`[Analyzer] OpenRouter error (attempt ${attempt}/${MAX_RETRIES}):`);
+        console.error(`  Status: ${status ?? "N/A"}`);
+        console.error(`  Body: ${JSON.stringify(errorBody ?? {})}`);
+        console.error(`  Code: ${err.code ?? "N/A"}`);
+
+        if (isRetryableError(err) && attempt < MAX_RETRIES) {
+          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          console.log(`[Analyzer] Retrying in ${delay}ms...`);
+          await sleep(delay);
+          continue;
+        }
+
+        const detail = errorBody ? JSON.stringify(errorBody) : err.message;
+        throw new Error(`OpenRouter API ${status ?? "error"}: ${detail}`);
+      }
+
+      throw err;
     }
-  );
+  }
+
+  if (!response) {
+    throw lastError ?? new Error("OpenRouter request failed after retries");
+  }
 
   const content = response.data.choices?.[0]?.message?.content ?? "";
   const analysis = parseAnalysisResponse(content);

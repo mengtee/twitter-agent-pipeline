@@ -81,6 +81,17 @@ export async function POST(
           tokensUsed: result.tokensUsed,
         });
       } catch (err) {
+        // Revert stage to "analyzed" so the user can retry
+        try {
+          const latest = await loadSession(session.id);
+          if (latest.stage === "selected") {
+            latest.stage = "analyzed";
+            await saveSession(latest);
+          }
+        } catch {
+          // Best effort — don't mask the original error
+        }
+
         send("error", {
           message: err instanceof Error ? err.message : String(err),
         });

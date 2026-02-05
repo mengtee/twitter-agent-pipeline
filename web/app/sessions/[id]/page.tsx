@@ -61,6 +61,15 @@ export default function SessionDetailPage() {
     }
   }, [session?.stage, analyzeSSE]);
 
+  // Auto-start generate when session is in "selected" stage (e.g. after page refresh)
+  const generateTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (session?.stage === "selected" && !generateTriggeredRef.current) {
+      generateTriggeredRef.current = true;
+      generateSSE.start();
+    }
+  }, [session?.stage, generateSSE]);
+
   // Refresh session after scrape completes
   useEffect(() => {
     if (scrapeSSE.status === "done") {
@@ -121,6 +130,7 @@ export default function SessionDetailPage() {
       stage: "selected",
     });
 
+    generateTriggeredRef.current = true;
     generateSSE.start();
   };
 
@@ -132,6 +142,7 @@ export default function SessionDetailPage() {
       userPrompt: prompt.trim(),
       personaSlug: personaSlug || undefined,
     });
+    generateTriggeredRef.current = true;
     generateSSE.reset();
     generateSSE.start();
   };
@@ -178,6 +189,7 @@ export default function SessionDetailPage() {
       analyzeSSE.reset();
       generateSSE.reset();
       analyzeTriggeredRef.current = false;
+      generateTriggeredRef.current = false;
       await mutate();
       scrapeSSE.start();
     } else if (stage === "scraped") {
@@ -185,12 +197,14 @@ export default function SessionDetailPage() {
       analyzeSSE.reset();
       generateSSE.reset();
       analyzeTriggeredRef.current = false;
+      generateTriggeredRef.current = false;
       await updateSession(id, { stage: "scraped" });
       await mutate();
       analyzeSSE.start();
     } else if (stage === "analyzed") {
       // Go back to tweet selection
       generateSSE.reset();
+      generateTriggeredRef.current = false;
       await updateSession(id, { stage: "analyzed" });
       mutate();
     } else if (stage === "generated") {
@@ -753,6 +767,24 @@ export default function SessionDetailPage() {
                 </div>
               )}
             </div>
+            {(generateSSE.status === "error" || generateSSE.status === "done") && (
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => handleGoToStage("analyzed")}
+                  className="px-3 py-1.5 text-xs font-medium rounded bg-zinc-700 text-zinc-300 hover:bg-zinc-600 transition-colors"
+                >
+                  Back to Selection
+                </button>
+                {generateSSE.status === "error" && (
+                  <button
+                    onClick={handleRegenerate}
+                    className="px-3 py-1.5 text-xs font-medium rounded bg-amber-600 text-white hover:bg-amber-500 transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -36,6 +36,14 @@
       "minViews": 1000,
       "minLikes": 50,
       "maxResults": 20
+    },
+    {
+      "name": "Pokemon TCG",
+      "prompt": "Show me trending tweets, related informations, and hot topics around pokemons TCG, this can be involved in anything, including polymarket TCG pokemon cards bets, and any other form of informations",
+      "timeWindow": "7d",
+      "minViews": 1000,
+      "minLikes": 50,
+      "maxResults": 20
     }
   ]
 }

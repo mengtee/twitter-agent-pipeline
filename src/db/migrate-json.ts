@@ -257,7 +257,7 @@ async function migrateLeaderboards(): Promise<number> {
           lb.maxTweetsPerSource || 10,
           lb.minViews || null,
           lb.minLikes || null,
-          lb.timeWindow || "24h",
+          lb.timeWindow || "48h",
           lb.lastScrapedAt ? new Date(lb.lastScrapedAt) : null,
           lb.nextScheduledAt ? new Date(lb.nextScheduledAt) : null,
           lb.isScrapingNow || false,

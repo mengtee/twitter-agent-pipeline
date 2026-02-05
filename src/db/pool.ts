@@ -23,6 +23,11 @@ export const pool =
     connectionTimeoutMillis: 10000,
   });
 
+// Handle pool errors to prevent silent failures
+pool.on("error", (err) => {
+  console.error("Database pool error:", err.message);
+});
+
 if (process.env.NODE_ENV !== "production") {
   globalForPg.pool = pool;
 }

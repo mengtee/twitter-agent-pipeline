@@ -1,10 +1,62 @@
 import axios, { AxiosError } from "axios";
+import https from "https";
 import type { SearchConfig, ScrapedTweet, TimeWindow } from "../types.js";
 import { ScrapedTweetSchema } from "../types.js";
 
-
 const GROK_API_URL = "https://api.x.ai/v1/responses";
 const GROK_MODEL = "grok-4-1-fast";
+
+// Keep-alive agent for better connection stability
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  timeout: 200000,
+});
+
+// Retry configuration
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY_MS = 2000;
+
+/**
+ * Retryable error codes - transient network issues that may resolve on retry.
+ */
+const RETRYABLE_CODES = new Set([
+  "ECONNRESET",
+  "ETIMEDOUT",
+  "ECONNABORTED",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "ECONNREFUSED",
+]);
+
+/**
+ * Check if an error is retryable.
+ */
+function isRetryableError(err: unknown): boolean {
+  if (err instanceof AxiosError) {
+    // Network errors (no response)
+    if (err.code && RETRYABLE_CODES.has(err.code)) {
+      return true;
+    }
+    // Server errors (5xx) are often transient
+    if (err.response?.status && err.response.status >= 500) {
+      return true;
+    }
+    // Rate limiting - retry after delay
+    if (err.response?.status === 429) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Sleep for a given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /**
  * Builds the system prompt that instructs Grok to return structured JSON.
@@ -108,6 +160,9 @@ function getFromDate(timeWindow: string): string {
     case "24h":
       now.setDate(now.getDate() - 1);
       break;
+    case "48h":
+      now.setDate(now.getDate() - 2);
+      break;
     case "7d":
       now.setDate(now.getDate() - 7);
       break;
@@ -123,12 +178,14 @@ function getFromDate(timeWindow: string): string {
 
 /**
  * Get the next larger time window for fallback when no tweets are found.
+ * Gradually expands: 1h → 12h → 24h → 48h → 7d → 14d → 30d
  */
 function getExpandedTimeWindow(current: TimeWindow): TimeWindow | null {
   const expansion: Record<TimeWindow, TimeWindow | null> = {
     "1h": "12h",
     "12h": "24h",
-    "24h": "7d",
+    "24h": "48h",
+    "48h": "7d",
     "7d": "14d",
     "14d": "30d",
     "30d": null,
@@ -305,22 +362,56 @@ async function doScrapeRequest(
   console.log(`--- End Request ---\n`);
 
   let response;
-  try {
-    response = await axios.post<GrokApiResponse>(GROK_API_URL, body, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 180_000,
-    });
-  } catch (err) {
-    if (err instanceof AxiosError && err.response) {
-      const errData = err.response.data as Record<string, unknown>;
-      throw new Error(
-        `Grok API ${err.response.status}: ${JSON.stringify(errData)}`
-      );
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      response = await axios.post<GrokApiResponse>(GROK_API_URL, body, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "Connection": "keep-alive",
+        },
+        timeout: 200_000,
+        httpsAgent,
+      });
+      // Success - break out of retry loop
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (err instanceof AxiosError) {
+        // Log detailed error info
+        console.error(`Axios error details (attempt ${attempt}/${MAX_RETRIES}):`);
+        console.error(`  - Code: ${err.code ?? "N/A"}`);
+        console.error(`  - Message: ${err.message}`);
+        console.error(`  - Status: ${err.response?.status ?? "N/A"}`);
+
+        // Check if retryable
+        if (isRetryableError(err) && attempt < MAX_RETRIES) {
+          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          console.log(`  Retrying in ${delay}ms...`);
+          await sleep(delay);
+          continue;
+        }
+
+        // Non-retryable or max retries exceeded
+        if (err.response) {
+          const errData = err.response.data as Record<string, unknown>;
+          throw new Error(
+            `Grok API ${err.response.status}: ${JSON.stringify(errData)}`
+          );
+        }
+        throw new Error(
+          `Grok API connection error (${err.code ?? "unknown"}): ${err.message}`
+        );
+      }
+      throw err;
     }
-    throw err;
+  }
+
+  if (!response) {
+    throw lastError ?? new Error("Grok API request failed after retries");
   }
 
   // Extract text from response

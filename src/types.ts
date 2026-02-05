@@ -22,7 +22,7 @@ export type ScrapedTweet = z.infer<typeof ScrapedTweetSchema>;
 
 // --- Search Config ---
 
-export const TimeWindows = ["1h", "12h", "24h", "7d", "14d", "30d"] as const;
+export const TimeWindows = ["1h", "12h", "24h", "48h", "7d", "14d", "30d"] as const;
 export type TimeWindow = (typeof TimeWindows)[number];
 
 export const SearchConfigSchema = z.object({
@@ -167,7 +167,7 @@ export const LeaderboardSchema = z.object({
   maxTweetsPerSource: z.number().min(5).max(50).default(10),
   minViews: z.number().optional(),
   minLikes: z.number().optional(),
-  timeWindow: z.enum(TimeWindows).default("24h"),
+  timeWindow: z.enum(TimeWindows).default("48h"),
   // Sync state
   lastScrapedAt: z.string().optional(),
   nextScheduledAt: z.string().optional(),

@@ -106,7 +106,7 @@ export async function initSchema(): Promise<void> {
       max_tweets_per_source INTEGER DEFAULT 10,
       min_views INTEGER,
       min_likes INTEGER,
-      time_window TEXT DEFAULT '24h',
+      time_window TEXT DEFAULT '48h',
       last_scraped_at TIMESTAMPTZ,
       next_scheduled_at TIMESTAMPTZ,
       is_scraping_now BOOLEAN DEFAULT FALSE,

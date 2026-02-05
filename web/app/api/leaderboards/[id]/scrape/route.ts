@@ -47,12 +47,16 @@ export async function POST(_request: Request, { params }: RouteParams) {
   await markScrapingStarted(id);
 
   const encoder = new TextEncoder();
+  let cancelled = false;
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (event: string, data: Record<string, unknown>) => {
-        controller.enqueue(
-          encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
-        );
+        if (!cancelled) {
+          controller.enqueue(
+            encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+          );
+        }
       };
 
       try {
@@ -99,6 +103,12 @@ export async function POST(_request: Request, { params }: RouteParams) {
       } finally {
         controller.close();
       }
+    },
+    cancel() {
+      // Stream was cancelled (user navigated away, connection dropped, etc.)
+      cancelled = true;
+      console.log(`[Scrape] Stream cancelled for leaderboard ${id}, resetting state...`);
+      failScraping(id, "Scrape cancelled (connection lost)").catch(console.error);
     },
   });
 

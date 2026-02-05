@@ -217,13 +217,15 @@ export async function saveSession(session: Session): Promise<void> {
   }
 
   // Sync analysis
-  await query(`DELETE FROM session_analyses WHERE session_id = $1`, [
-    session.id,
-  ]);
   if (session.analysis) {
     await query(
       `INSERT INTO session_analyses (session_id, summary, trending_topics, topics_with_tweets, content_ideas)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (session_id) DO UPDATE SET
+         summary = EXCLUDED.summary,
+         trending_topics = EXCLUDED.trending_topics,
+         topics_with_tweets = EXCLUDED.topics_with_tweets,
+         content_ideas = EXCLUDED.content_ideas`,
       [
         session.id,
         session.analysis.summary,
@@ -232,6 +234,10 @@ export async function saveSession(session: Session): Promise<void> {
         JSON.stringify(session.analysis.contentIdeas),
       ]
     );
+  } else {
+    await query(`DELETE FROM session_analyses WHERE session_id = $1`, [
+      session.id,
+    ]);
   }
 
   // Sync samples

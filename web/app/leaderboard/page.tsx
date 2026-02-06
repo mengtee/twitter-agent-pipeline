@@ -21,6 +21,7 @@ export default function LeaderboardListPage() {
   const [newSourceType, setNewSourceType] = useState<"handle" | "topic">("handle");
   const [newSourceValue, setNewSourceValue] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleAddSource = () => {
     if (!newSourceValue.trim()) return;
@@ -53,11 +54,14 @@ export default function LeaderboardListPage() {
 
   const handleDelete = async (id: string, name: string) => {
     if (!confirm(`Delete leaderboard "${name}"? This cannot be undone.`)) return;
+    setDeletingId(id);
     try {
       await deleteLeaderboard(id);
       mutate();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -208,9 +212,10 @@ export default function LeaderboardListPage() {
                     e.stopPropagation();
                     handleDelete(lb.id, lb.name);
                   }}
-                  className="text-zinc-600 hover:text-red-400 text-sm px-2 py-1"
+                  disabled={deletingId === lb.id}
+                  className="text-zinc-600 hover:text-red-400 text-sm px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Delete
+                  {deletingId === lb.id ? "..." : "Delete"}
                 </button>
               </div>
             </Link>

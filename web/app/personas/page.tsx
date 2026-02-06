@@ -1,30 +1,56 @@
 "use client";
 
+import { useState } from "react";
 import { usePersonas } from "@/hooks/use-personas";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 export default function PersonasPage() {
   const { personas, isLoading, mutate } = usePersonas();
+  const [busySlug, setBusySlug] = useState<string | null>(null);
 
   const handleSetDefault = async (slug: string) => {
-    await fetch("/api/personas/default", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug }),
-    });
-    mutate();
+    setBusySlug(slug);
+    try {
+      const res = await fetch("/api/personas/default", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+      if (!res.ok) throw new Error(`Failed to set default: ${res.statusText}`);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to set default persona");
+    } finally {
+      setBusySlug(null);
+    }
   };
 
   const handleDuplicate = async (slug: string) => {
-    await fetch(`/api/personas/${slug}/duplicate`, { method: "POST" });
-    mutate();
+    setBusySlug(slug);
+    try {
+      const res = await fetch(`/api/personas/${slug}/duplicate`, { method: "POST" });
+      if (!res.ok) throw new Error(`Failed to duplicate: ${res.statusText}`);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to duplicate persona");
+    } finally {
+      setBusySlug(null);
+    }
   };
 
   const handleDelete = async (slug: string, name: string) => {
     if (!confirm(`Delete persona "${name}"?`)) return;
-    await fetch(`/api/personas/${slug}`, { method: "DELETE" });
-    mutate();
+    setBusySlug(slug);
+    try {
+      const res = await fetch(`/api/personas/${slug}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Failed to delete: ${res.statusText}`);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete persona");
+    } finally {
+      setBusySlug(null);
+    }
   };
 
   return (
@@ -75,9 +101,10 @@ export default function PersonasPage() {
                   {!p.isDefault && (
                     <button
                       onClick={() => handleSetDefault(p.slug)}
-                      className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:text-blue-400 hover:bg-zinc-700 transition-colors"
+                      disabled={busySlug === p.slug}
+                      className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:text-blue-400 hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Set Default
+                      {busySlug === p.slug ? "..." : "Set Default"}
                     </button>
                   )}
                   <Link
@@ -88,15 +115,17 @@ export default function PersonasPage() {
                   </Link>
                   <button
                     onClick={() => handleDuplicate(p.slug)}
-                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                    disabled={busySlug === p.slug}
+                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Duplicate
+                    {busySlug === p.slug ? "..." : "Duplicate"}
                   </button>
                   <button
                     onClick={() => handleDelete(p.slug, p.name)}
-                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-red-400 hover:bg-red-900/30 transition-colors"
+                    disabled={busySlug === p.slug}
+                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Delete
+                    {busySlug === p.slug ? "..." : "Delete"}
                   </button>
                 </div>
               </div>

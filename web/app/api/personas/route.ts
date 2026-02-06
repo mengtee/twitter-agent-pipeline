@@ -4,14 +4,13 @@ import {
   getDefaultPersonaSlug,
   savePersona,
   personaSlug,
-  loadPersonaBySlug,
 } from "@pipeline/config.js";
 import { PersonaConfigSchema } from "@pipeline/types.js";
 
 export async function GET() {
   try {
-    const personas = listPersonas();
-    const defaultSlug = getDefaultPersonaSlug();
+    const personas = await listPersonas();
+    const defaultSlug = await getDefaultPersonaSlug();
     return NextResponse.json({
       personas: personas.map((p) => ({
         ...p,
@@ -33,7 +32,7 @@ export async function POST(request: Request) {
 
     // Check for duplicate slug
     const slug = personaSlug(persona.name);
-    const existing = listPersonas();
+    const existing = await listPersonas();
     if (existing.some((p) => p.slug === slug)) {
       return NextResponse.json(
         { error: `Persona "${persona.name}" already exists` },
@@ -41,7 +40,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const savedSlug = savePersona(persona);
+    const savedSlug = await savePersona(persona);
     return NextResponse.json({ success: true, slug: savedSlug });
   } catch (err) {
     return NextResponse.json(

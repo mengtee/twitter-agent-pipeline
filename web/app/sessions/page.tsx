@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useSessions, deleteSession } from "@/hooks/use-sessions";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDate } from "@/lib/utils";
@@ -7,11 +8,19 @@ import Link from "next/link";
 
 export default function SessionsPage() {
   const { sessions, isLoading, mutate } = useSessions();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this session?")) return;
-    await deleteSession(id);
-    mutate();
+    setDeletingId(id);
+    try {
+      await deleteSession(id);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete session");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -66,9 +75,10 @@ export default function SessionsPage() {
                 </Link>
                 <button
                   onClick={() => handleDelete(s.id)}
-                  className="px-3 py-1.5 text-xs font-medium rounded bg-red-900/50 text-red-400 hover:bg-red-900 transition-colors"
+                  disabled={deletingId === s.id}
+                  className="px-3 py-1.5 text-xs font-medium rounded bg-red-900/50 text-red-400 hover:bg-red-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Delete
+                  {deletingId === s.id ? "Deleting..." : "Delete"}
                 </button>
               </div>
             </div>

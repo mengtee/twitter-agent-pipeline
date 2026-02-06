@@ -6,26 +6,10 @@ import {
   buildSessionUserPrompt,
   type ContentBlock,
 } from "../processor/prompt-builder.js";
+import { MAX_RETRIES, sleep, isRetryableError, getRetryDelay } from "../retry.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
-
-// Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY_MS = 2000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function isRetryableError(err: unknown): boolean {
-  if (err instanceof AxiosError) {
-    if (err.response?.status && err.response.status >= 500) return true;
-    if (err.response?.status === 429) return true;
-    if (err.code && ["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "EPIPE"].includes(err.code)) return true;
-  }
-  return false;
-}
 
 interface OpenRouterResponse {
   choices: Array<{
@@ -181,7 +165,7 @@ export async function generateSamples(
 
         // Retryable errors (500s, 429, network)
         if (isRetryableError(err) && attempt < MAX_RETRIES) {
-          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          const delay = getRetryDelay(err, attempt);
           console.log(`[Generator] Retrying in ${delay}ms...`);
           await sleep(delay);
           continue;

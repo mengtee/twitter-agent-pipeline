@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
-import { loadConfig } from "@pipeline/config.js";
+import { loadConfig, loadSearches, loadDefaultPersona } from "@pipeline/config.js";
 
 export async function GET() {
   try {
     const config = loadConfig();
+    const searches = await loadSearches();
+    let personaName = "(none)";
+    try {
+      const persona = await loadDefaultPersona();
+      personaName = persona.name;
+    } catch {
+      // No personas configured yet
+    }
+
     return NextResponse.json({
       valid: true,
-      persona: config.persona.name,
-      searchCount: config.searches.length,
+      persona: personaName,
+      searchCount: searches.length,
       apiKeys: {
         xai: !!config.xaiApiKey,
         openrouter: !!config.openrouterApiKey,

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import useSWR from "swr";
 import { useSessions } from "@/hooks/use-sessions";
 import { cn } from "@/lib/utils";
@@ -17,13 +18,20 @@ interface ConfigStatus {
 export default function SettingsPage() {
   const { data: config, isLoading } = useSWR<ConfigStatus>("/api/config", fetcher);
   const { sessions } = useSessions();
+  const [isClearing, setIsClearing] = useState(false);
 
   const handleClearSessions = async () => {
     if (!confirm("Are you sure you want to delete all sessions? This cannot be undone.")) return;
-    for (const s of sessions) {
-      await fetch(`/api/sessions/${s.id}`, { method: "DELETE" });
+    setIsClearing(true);
+    try {
+      for (const s of sessions) {
+        await fetch(`/api/sessions/${s.id}`, { method: "DELETE" });
+      }
+      window.location.reload();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to clear sessions");
+      setIsClearing(false);
     }
-    window.location.reload();
   };
 
   const completedCount = sessions.filter((s) => s.stage === "completed").length;
@@ -119,9 +127,10 @@ export default function SettingsPage() {
         {sessions.length > 0 && (
           <button
             onClick={handleClearSessions}
-            className="px-3 py-1.5 text-xs font-medium rounded bg-red-900/50 text-red-400 hover:bg-red-900 transition-colors"
+            disabled={isClearing}
+            className="px-3 py-1.5 text-xs font-medium rounded bg-red-900/50 text-red-400 hover:bg-red-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Delete All Sessions
+            {isClearing ? "Deleting..." : "Delete All Sessions"}
           </button>
         )}
       </div>

@@ -10,6 +10,8 @@ import {
   type LeaderboardScrapeProgress,
 } from "@pipeline/leaderboard/scraper.js";
 
+export const maxDuration = 300;
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -59,6 +61,12 @@ export async function POST(_request: Request, { params }: RouteParams) {
         }
       };
 
+      const heartbeat = setInterval(() => {
+        if (!cancelled) {
+          controller.enqueue(encoder.encode(": heartbeat\n\n"));
+        }
+      }, 15_000);
+
       try {
         send("started", {
           leaderboardId: id,
@@ -101,6 +109,7 @@ export async function POST(_request: Request, { params }: RouteParams) {
         await failScraping(id, errorMsg);
         send("error", { leaderboardId: id, message: errorMsg });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },

@@ -1,31 +1,20 @@
 import { config as dotenvConfig } from "dotenv";
-import {
-  readFileSync,
-  writeFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  unlinkSync,
-} from "node:fs";
 import { resolve } from "node:path";
+import { query, queryOne } from "./db/query.js";
 import {
-  SearchesFileSchema,
   PersonaConfigSchema,
   type SearchConfig,
   type PersonaConfig,
 } from "./types.js";
 
-const PROJECT_ROOT = process.env.PIPELINE_ROOT
-  ? resolve(process.env.PIPELINE_ROOT)
-  : resolve(import.meta.dirname, "..");
-
-dotenvConfig({ path: resolve(PROJECT_ROOT, ".env") });
+// Load .env for CLI usage (no-op if already loaded or in Next.js)
+if (typeof import.meta.dirname === "string") {
+  dotenvConfig({ path: resolve(import.meta.dirname, "../.env") });
+}
 
 export interface AppConfig {
   xaiApiKey: string;
   openrouterApiKey: string;
-  searches: SearchConfig[];
-  persona: PersonaConfig;
 }
 
 function requireEnv(key: string): string {
@@ -38,50 +27,70 @@ function requireEnv(key: string): string {
   return value;
 }
 
-function loadJsonFile<T>(filePath: string, parser: { parse: (data: unknown) => T }): T {
-  const fullPath = resolve(PROJECT_ROOT, filePath);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Config file not found: ${fullPath}`);
-  }
-  const raw = readFileSync(fullPath, "utf-8");
-  try {
-    const data = JSON.parse(raw);
-    return parser.parse(data);
-  } catch (err) {
-    throw new Error(
-      `Invalid config in ${filePath}: ${err instanceof Error ? err.message : String(err)}`
-    );
-  }
-}
-
+/**
+ * Load API keys from environment variables.
+ * No longer loads searches/persona — use dedicated functions instead.
+ */
 export function loadConfig(): AppConfig {
-  const xaiApiKey = requireEnv("XAI_API_KEY");
-  const openrouterApiKey = requireEnv("OPENROUTER_API_KEY");
-
-  const { searches } = loadJsonFile("config/searches.json", SearchesFileSchema);
-  const persona = loadJsonFile("config/persona.json", PersonaConfigSchema);
-
-  return { xaiApiKey, openrouterApiKey, searches, persona };
+  return {
+    xaiApiKey: requireEnv("XAI_API_KEY"),
+    openrouterApiKey: requireEnv("OPENROUTER_API_KEY"),
+  };
 }
 
-export function loadSearches(): SearchConfig[] {
-  const { searches } = loadJsonFile("config/searches.json", SearchesFileSchema);
-  return searches;
+// --- Searches (PostgreSQL) ---
+
+interface DbSearch {
+  name: string;
+  prompt: string;
+  time_window: string;
+  min_views: number | null;
+  min_likes: number | null;
+  max_results: number;
 }
 
-export function loadPersona(): PersonaConfig {
-  return loadJsonFile("config/persona.json", PersonaConfigSchema);
+export async function loadSearches(): Promise<SearchConfig[]> {
+  const rows = await query<DbSearch>(`SELECT * FROM searches ORDER BY name`);
+  return rows.map((r) => ({
+    name: r.name,
+    prompt: r.prompt,
+    timeWindow: r.time_window as SearchConfig["timeWindow"],
+    minViews: r.min_views ?? undefined,
+    minLikes: r.min_likes ?? undefined,
+    maxResults: r.max_results,
+  }));
 }
 
-// --- Multi-Persona Support ---
+export async function saveSearch(search: SearchConfig): Promise<void> {
+  await query(
+    `INSERT INTO searches (name, prompt, time_window, min_views, min_likes, max_results)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (name) DO UPDATE SET
+       prompt = EXCLUDED.prompt,
+       time_window = EXCLUDED.time_window,
+       min_views = EXCLUDED.min_views,
+       min_likes = EXCLUDED.min_likes,
+       max_results = EXCLUDED.max_results,
+       updated_at = NOW()`,
+    [search.name, search.prompt, search.timeWindow, search.minViews ?? null, search.minLikes ?? null, search.maxResults]
+  );
+}
 
-const PERSONAS_DIR = resolve(PROJECT_ROOT, "config/personas");
-const DEFAULT_PERSONA_FILE = resolve(PERSONAS_DIR, "_default.txt");
+export async function deleteSearch(name: string): Promise<boolean> {
+  const rows = await query(
+    `DELETE FROM searches WHERE name = $1 RETURNING name`,
+    [name]
+  );
+  return rows.length > 0;
+}
 
-function ensurePersonasDir(): void {
-  if (!existsSync(PERSONAS_DIR)) {
-    mkdirSync(PERSONAS_DIR, { recursive: true });
-  }
+// --- Personas (PostgreSQL) ---
+
+interface DbPersona {
+  slug: string;
+  name: string;
+  config: PersonaConfig;
+  is_default: boolean;
 }
 
 export function personaSlug(name: string): string {
@@ -91,82 +100,80 @@ export function personaSlug(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
-export function listPersonas(): Array<{ slug: string; name: string }> {
-  ensurePersonasDir();
-  const files = readdirSync(PERSONAS_DIR).filter((f) => f.endsWith(".json"));
-  return files.map((f) => {
-    const slug = f.replace(/\.json$/, "");
-    const raw = readFileSync(resolve(PERSONAS_DIR, f), "utf-8");
-    const persona = PersonaConfigSchema.parse(JSON.parse(raw));
-    return { slug, name: persona.name };
-  });
+export async function listPersonas(): Promise<Array<{ slug: string; name: string }>> {
+  const rows = await query<DbPersona>(
+    `SELECT slug, name FROM personas ORDER BY name`
+  );
+  return rows.map((r) => ({ slug: r.slug, name: r.name }));
 }
 
-export function loadPersonaBySlug(slug: string): PersonaConfig {
-  const filePath = resolve(PERSONAS_DIR, `${slug}.json`);
-  if (!existsSync(filePath)) {
+export async function loadPersonaBySlug(slug: string): Promise<PersonaConfig> {
+  const row = await queryOne<DbPersona>(
+    `SELECT config FROM personas WHERE slug = $1`,
+    [slug]
+  );
+  if (!row) {
     throw new Error(`Persona not found: ${slug}`);
   }
-  const raw = readFileSync(filePath, "utf-8");
-  return PersonaConfigSchema.parse(JSON.parse(raw));
+  return PersonaConfigSchema.parse(row.config);
 }
 
-export function savePersona(persona: PersonaConfig): string {
-  ensurePersonasDir();
+export async function savePersona(persona: PersonaConfig): Promise<string> {
   const validated = PersonaConfigSchema.parse(persona);
   const slug = personaSlug(validated.name);
-  const filePath = resolve(PERSONAS_DIR, `${slug}.json`);
-  writeFileSync(filePath, JSON.stringify(validated, null, 2));
+  await query(
+    `INSERT INTO personas (slug, name, config)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (slug) DO UPDATE SET
+       name = EXCLUDED.name,
+       config = EXCLUDED.config,
+       updated_at = NOW()`,
+    [slug, validated.name, JSON.stringify(validated)]
+  );
   return slug;
 }
 
-export function deletePersona(slug: string): boolean {
-  const filePath = resolve(PERSONAS_DIR, `${slug}.json`);
-  if (!existsSync(filePath)) return false;
-  unlinkSync(filePath);
-  return true;
+export async function deletePersona(slug: string): Promise<boolean> {
+  const rows = await query(
+    `DELETE FROM personas WHERE slug = $1 RETURNING slug`,
+    [slug]
+  );
+  return rows.length > 0;
 }
 
-export function getDefaultPersonaSlug(): string | null {
-  ensurePersonasDir();
-  if (!existsSync(DEFAULT_PERSONA_FILE)) return null;
-  return readFileSync(DEFAULT_PERSONA_FILE, "utf-8").trim() || null;
+export async function getDefaultPersonaSlug(): Promise<string | null> {
+  const row = await queryOne<DbPersona>(
+    `SELECT slug FROM personas WHERE is_default = TRUE LIMIT 1`
+  );
+  return row?.slug ?? null;
 }
 
-export function setDefaultPersonaSlug(slug: string): void {
-  ensurePersonasDir();
-  writeFileSync(DEFAULT_PERSONA_FILE, slug);
-}
-
-export function migratePersonaIfNeeded(): void {
-  ensurePersonasDir();
-  const existing = readdirSync(PERSONAS_DIR).filter((f) => f.endsWith(".json"));
-  if (existing.length > 0) return;
-
-  const legacyPath = resolve(PROJECT_ROOT, "config/persona.json");
-  if (!existsSync(legacyPath)) return;
-
-  try {
-    const raw = readFileSync(legacyPath, "utf-8");
-    const persona = PersonaConfigSchema.parse(JSON.parse(raw));
-    const slug = savePersona(persona);
-    setDefaultPersonaSlug(slug);
-  } catch {
-    // Legacy file invalid — skip migration
+export async function setDefaultPersonaSlug(slug: string): Promise<void> {
+  // Clear all defaults, then set the new one
+  await query(`UPDATE personas SET is_default = FALSE WHERE is_default = TRUE`);
+  if (slug) {
+    await query(
+      `UPDATE personas SET is_default = TRUE WHERE slug = $1`,
+      [slug]
+    );
   }
 }
 
-export function loadDefaultPersona(): PersonaConfig {
-  migratePersonaIfNeeded();
-  const slug = getDefaultPersonaSlug();
+export async function loadDefaultPersona(): Promise<PersonaConfig> {
+  const slug = await getDefaultPersonaSlug();
   if (slug) {
     try {
-      return loadPersonaBySlug(slug);
+      return await loadPersonaBySlug(slug);
     } catch {
-      // Fall through to legacy
+      // Fall through
     }
   }
-  return loadJsonFile("config/persona.json", PersonaConfigSchema);
+  // Return first persona if no default set
+  const rows = await query<DbPersona>(
+    `SELECT config FROM personas ORDER BY created_at LIMIT 1`
+  );
+  if (rows.length > 0) {
+    return PersonaConfigSchema.parse(rows[0].config);
+  }
+  throw new Error("No personas configured. Create one first.");
 }
-
-export { PROJECT_ROOT };

@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { loadConfig, loadSearches } from "./config.js";
+import { loadConfig, loadSearches, loadDefaultPersona } from "./config.js";
 import { scrapeAll } from "./scraper/grok-scraper.js";
 import {
   loadSeenUrls,
@@ -24,7 +24,7 @@ program
   .option("-n, --name <name>", "Run only a specific search by name")
   .option("--dry-run", "Show what would be searched without calling the API")
   .action(async (opts: { name?: string; dryRun?: boolean }) => {
-    let searches = loadSearches();
+    let searches = await loadSearches();
 
     if (opts.name) {
       const allNames = searches.map((s) => s.name);
@@ -96,15 +96,27 @@ program
   .action(async () => {
     try {
       const config = loadConfig();
+      const searches = await loadSearches();
+      let persona;
+      try {
+        persona = await loadDefaultPersona();
+      } catch {
+        // No personas configured
+      }
+
       console.log("Configuration valid!\n");
-      console.log(`Persona: ${config.persona.name}`);
-      console.log(`  Bio: ${config.persona.bio}`);
-      console.log(`  Tone: ${config.persona.voice.tone}`);
-      console.log(`  Topics: ${config.persona.topics.interests.join(", ")}`);
-      console.log(`  Rules: ${config.persona.rules.length}`);
-      console.log(`  Examples: ${config.persona.examples.length}`);
-      console.log(`\nSearches: ${config.searches.length}`);
-      for (const s of config.searches) {
+      if (persona) {
+        console.log(`Persona: ${persona.name}`);
+        console.log(`  Bio: ${persona.bio}`);
+        console.log(`  Tone: ${persona.voice.tone}`);
+        console.log(`  Topics: ${persona.topics.interests.join(", ")}`);
+        console.log(`  Rules: ${persona.rules.length}`);
+        console.log(`  Examples: ${persona.examples.length}`);
+      } else {
+        console.log("Persona: (none configured)");
+      }
+      console.log(`\nSearches: ${searches.length}`);
+      for (const s of searches) {
         console.log(
           `  - ${s.name}: "${s.prompt}" [${s.timeWindow}, max ${s.maxResults}]`
         );

@@ -6,11 +6,14 @@
 
 import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { PROJECT_ROOT } from "../config.js";
+import { config as dotenvConfig } from "dotenv";
 import { initSchema } from "./schema.js";
 import { query } from "./query.js";
 import { pool } from "./pool.js";
 
+dotenvConfig();
+
+const PROJECT_ROOT = resolve(import.meta.dirname, "../..");
 const DATA_DIR = resolve(PROJECT_ROOT, "data");
 const SESSIONS_DIR = resolve(DATA_DIR, "sessions");
 const LEADERBOARDS_DIR = resolve(DATA_DIR, "leaderboards");

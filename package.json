@@ -17,6 +17,7 @@
     "web:build": "cd web && npm run build",
     "db:init": "tsx src/db/schema.ts",
     "db:migrate-json": "tsx src/db/migrate-json.ts",
+    "db:migrate-config": "tsx src/db/migrate-config.ts",
     "db:migrate": "db-migrate up",
     "db:migrate:down": "db-migrate down",
     "db:migrate:create": "db-migrate create --sql-file"

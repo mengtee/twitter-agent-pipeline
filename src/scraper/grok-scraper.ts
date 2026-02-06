@@ -2,6 +2,7 @@ import axios, { AxiosError } from "axios";
 import https from "https";
 import type { SearchConfig, ScrapedTweet, TimeWindow } from "../types.js";
 import { ScrapedTweetSchema } from "../types.js";
+import { MAX_RETRIES, sleep, isRetryableError, getRetryDelay } from "../retry.js";
 
 const GROK_API_URL = "https://api.x.ai/v1/responses";
 const GROK_MODEL = "grok-4-1-fast";
@@ -12,51 +13,6 @@ const httpsAgent = new https.Agent({
   keepAliveMsecs: 30000,
   timeout: 200000,
 });
-
-// Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY_MS = 2000;
-
-/**
- * Retryable error codes - transient network issues that may resolve on retry.
- */
-const RETRYABLE_CODES = new Set([
-  "ECONNRESET",
-  "ETIMEDOUT",
-  "ECONNABORTED",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "EPIPE",
-  "ECONNREFUSED",
-]);
-
-/**
- * Check if an error is retryable.
- */
-function isRetryableError(err: unknown): boolean {
-  if (err instanceof AxiosError) {
-    // Network errors (no response)
-    if (err.code && RETRYABLE_CODES.has(err.code)) {
-      return true;
-    }
-    // Server errors (5xx) are often transient
-    if (err.response?.status && err.response.status >= 500) {
-      return true;
-    }
-    // Rate limiting - retry after delay
-    if (err.response?.status === 429) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Sleep for a given number of milliseconds.
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Builds the system prompt that instructs Grok to return structured JSON.
@@ -389,7 +345,7 @@ async function doScrapeRequest(
 
         // Check if retryable
         if (isRetryableError(err) && attempt < MAX_RETRIES) {
-          const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+          const delay = getRetryDelay(err, attempt);
           console.log(`  Retrying in ${delay}ms...`);
           await sleep(delay);
           continue;

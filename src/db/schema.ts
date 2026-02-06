@@ -18,7 +18,7 @@ export async function initSchema(): Promise<void> {
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      stage TEXT NOT NULL DEFAULT 'created',
+      stage TEXT NOT NULL DEFAULT 'created' CHECK (stage IN ('created', 'scraped', 'analyzed', 'selected', 'generated', 'completed')),
       search_names TEXT[] NOT NULL DEFAULT '{}',
       user_prompt TEXT NOT NULL DEFAULT '',
       persona_slug TEXT,
@@ -172,6 +172,34 @@ export async function initSchema(): Promise<void> {
   `);
   console.log("[DB] Created table: seen_urls");
 
+  // Personas table (migrated from config/personas/*.json)
+  await query(`
+    CREATE TABLE IF NOT EXISTS personas (
+      slug TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      config JSONB NOT NULL,
+      is_default BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  console.log("[DB] Created table: personas");
+
+  // Searches table (migrated from config/searches.json)
+  await query(`
+    CREATE TABLE IF NOT EXISTS searches (
+      name TEXT PRIMARY KEY,
+      prompt TEXT NOT NULL,
+      time_window TEXT DEFAULT '24h',
+      min_views INTEGER,
+      min_likes INTEGER,
+      max_results INTEGER DEFAULT 20,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  console.log("[DB] Created table: searches");
+
   // Create indexes
   console.log("[DB] Creating indexes...");
 
@@ -182,6 +210,7 @@ export async function initSchema(): Promise<void> {
   await query(`CREATE INDEX IF NOT EXISTS idx_leaderboard_tweets_leaderboard_id ON leaderboard_tweets(leaderboard_id)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_leaderboard_tweets_rank ON leaderboard_tweets(leaderboard_id, rank)`);
   await query(`CREATE INDEX IF NOT EXISTS idx_seen_urls_seen_at ON seen_urls(seen_at)`);
+  await query(`CREATE INDEX IF NOT EXISTS idx_personas_is_default ON personas(is_default) WHERE is_default = TRUE`);
 
   console.log("[DB] Schema initialization complete!");
 }

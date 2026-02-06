@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { query, queryOne } from "../db/query.js";
+import { query, queryOne, withTransaction } from "../db/query.js";
 import type {
   Leaderboard,
   LeaderboardGlobalConfig,
@@ -157,76 +157,80 @@ export async function loadLeaderboard(id: string): Promise<Leaderboard | null> {
 }
 
 /**
- * Save a leaderboard.
+ * Build a multi-row INSERT query with parameterized values.
+ */
+function buildMultiInsert(
+  baseQuery: string,
+  rows: unknown[][]
+): { text: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const valueGroups: string[] = [];
+  for (const row of rows) {
+    const offset = params.length;
+    const placeholders = row.map((_, i) => `$${offset + i + 1}`);
+    valueGroups.push(`(${placeholders.join(", ")})`);
+    params.push(...row);
+  }
+  return { text: `${baseQuery} VALUES ${valueGroups.join(", ")}`, params };
+}
+
+/**
+ * Save a leaderboard inside a transaction.
  */
 export async function saveLeaderboard(leaderboard: Leaderboard): Promise<void> {
-  await query(
-    `UPDATE leaderboards SET
-       name = $2,
-       sources = $3,
-       max_tweets_per_source = $4,
-       min_views = $5,
-       min_likes = $6,
-       time_window = $7,
-       last_scraped_at = $8,
-       next_scheduled_at = $9,
-       is_scraping_now = $10,
-       last_error = $11,
-       tokens_input = $12,
-       tokens_output = $13,
-       updated_at = NOW()
-     WHERE id = $1`,
-    [
-      leaderboard.id,
-      leaderboard.name,
-      JSON.stringify(leaderboard.sources),
-      leaderboard.maxTweetsPerSource,
-      leaderboard.minViews ?? null,
-      leaderboard.minLikes ?? null,
-      leaderboard.timeWindow,
-      leaderboard.lastScrapedAt ? new Date(leaderboard.lastScrapedAt) : null,
-      leaderboard.nextScheduledAt ? new Date(leaderboard.nextScheduledAt) : null,
-      leaderboard.isScrapingNow,
-      leaderboard.lastError ?? null,
-      leaderboard.tokensUsed.input,
-      leaderboard.tokensUsed.output,
-    ]
-  );
+  await withTransaction(async (tx) => {
+    await tx.query(
+      `UPDATE leaderboards SET
+         name = $2,
+         sources = $3,
+         max_tweets_per_source = $4,
+         min_views = $5,
+         min_likes = $6,
+         time_window = $7,
+         last_scraped_at = $8,
+         next_scheduled_at = $9,
+         is_scraping_now = $10,
+         last_error = $11,
+         tokens_input = $12,
+         tokens_output = $13,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [
+        leaderboard.id,
+        leaderboard.name,
+        JSON.stringify(leaderboard.sources),
+        leaderboard.maxTweetsPerSource,
+        leaderboard.minViews ?? null,
+        leaderboard.minLikes ?? null,
+        leaderboard.timeWindow,
+        leaderboard.lastScrapedAt ? new Date(leaderboard.lastScrapedAt) : null,
+        leaderboard.nextScheduledAt ? new Date(leaderboard.nextScheduledAt) : null,
+        leaderboard.isScrapingNow,
+        leaderboard.lastError ?? null,
+        leaderboard.tokensUsed.input,
+        leaderboard.tokensUsed.output,
+      ]
+    );
 
-  // Sync tweets (delete and re-insert)
-  await query(`DELETE FROM leaderboard_tweets WHERE leaderboard_id = $1`, [leaderboard.id]);
+    // Sync tweets (delete + multi-row insert)
+    await tx.execute(`DELETE FROM leaderboard_tweets WHERE leaderboard_id = $1`, [leaderboard.id]);
 
-  if (leaderboard.tweets.length > 0) {
-    for (const tweet of leaderboard.tweets) {
-      await query(
+    if (leaderboard.tweets.length > 0) {
+      const { text, params } = buildMultiInsert(
         `INSERT INTO leaderboard_tweets (
            id, leaderboard_id, text, author, handle, likes, retweets, views, replies,
            url, image_urls, posted_at, scraped_at, search_name, source_type, source_value,
-           engagement_score, rank
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
-        [
-          tweet.id,
-          leaderboard.id,
-          tweet.text,
-          tweet.author,
-          tweet.handle,
-          tweet.likes,
-          tweet.retweets,
-          tweet.views,
-          tweet.replies,
-          tweet.url,
-          tweet.imageUrls,
-          new Date(tweet.postedAt),
-          new Date(tweet.scrapedAt),
-          tweet.searchName,
-          tweet.sourceType,
-          tweet.sourceValue,
-          tweet.engagementScore,
-          tweet.rank ?? null,
-        ]
+           engagement_score, rank)`,
+        leaderboard.tweets.map((t) => [
+          t.id, leaderboard.id, t.text, t.author, t.handle,
+          t.likes, t.retweets, t.views, t.replies,
+          t.url, t.imageUrls, new Date(t.postedAt), new Date(t.scrapedAt),
+          t.searchName, t.sourceType, t.sourceValue, t.engagementScore, t.rank ?? null,
+        ])
       );
+      await tx.execute(text, params);
     }
-  }
+  });
 }
 
 /**
@@ -274,10 +278,35 @@ export async function listLeaderboards(): Promise<Array<{
 
 // --- Scrape Operations ---
 
+/** Scraping timeout in milliseconds (10 minutes). */
+const SCRAPING_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * Auto-reset leaderboards stuck in scraping state for longer than the timeout.
+ * Called before starting a new scrape to prevent permanent stuck states.
+ */
+export async function resetStuckScrapingJobs(): Promise<number> {
+  const rows = await query<{ id: string }>(
+    `UPDATE leaderboards
+     SET is_scraping_now = false,
+         last_error = 'Scraping timed out (auto-reset)',
+         updated_at = NOW()
+     WHERE is_scraping_now = true
+       AND updated_at < NOW() - INTERVAL '${Math.floor(SCRAPING_TIMEOUT_MS / 1000)} seconds'
+     RETURNING id`
+  );
+  if (rows.length > 0) {
+    console.log(`[Leaderboard] Auto-reset ${rows.length} stuck scraping job(s): ${rows.map((r) => r.id).join(", ")}`);
+  }
+  return rows.length;
+}
+
 /**
  * Mark a leaderboard as scraping started.
+ * Also resets any stuck scraping jobs first.
  */
 export async function markScrapingStarted(id: string): Promise<void> {
+  await resetStuckScrapingJobs();
   await query(
     `UPDATE leaderboards SET is_scraping_now = true, last_error = NULL, updated_at = NOW() WHERE id = $1`,
     [id]

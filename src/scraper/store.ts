@@ -1,16 +1,7 @@
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { PROJECT_ROOT } from "../config.js";
 import { query } from "../db/query.js";
 import type { ScrapedTweet } from "../types.js";
-
-const DATA_DIR = resolve(PROJECT_ROOT, "data");
-
-function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) {
-    mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
 
 // Database row type
 interface DbSeenUrl {
@@ -84,12 +75,16 @@ export function deduplicateTweets(
 
 /**
  * Save scraped tweets to a timestamped file (for debugging/archiving).
+ * Only works in CLI mode — not available on serverless runtimes.
  */
 export function saveScrapeResults(tweets: ScrapedTweet[]): string {
-  ensureDataDir();
+  const dataDir = resolve(process.cwd(), "data");
+  if (!existsSync(dataDir)) {
+    mkdirSync(dataDir, { recursive: true });
+  }
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `scraped_${timestamp}.json`;
-  const filepath = resolve(DATA_DIR, filename);
+  const filepath = resolve(dataDir, filename);
   writeFileSync(filepath, JSON.stringify(tweets, null, 2));
   return filepath;
 }

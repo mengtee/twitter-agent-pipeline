@@ -1,3 +1,4 @@
+import type { PoolClient } from "pg";
 import { pool } from "./pool.js";
 
 /**
@@ -36,4 +37,50 @@ export async function queryOne<T>(
 export async function execute(text: string, params?: unknown[]): Promise<number> {
   const result = await pool.query(text, params);
   return result.rowCount ?? 0;
+}
+
+/**
+ * Transaction client with the same query interface.
+ */
+export interface TxClient {
+  query: <T>(text: string, params?: unknown[]) => Promise<T[]>;
+  queryOne: <T>(text: string, params?: unknown[]) => Promise<T | null>;
+  execute: (text: string, params?: unknown[]) => Promise<number>;
+}
+
+/**
+ * Run a function inside a database transaction.
+ * Automatically commits on success, rolls back on error.
+ */
+export async function withTransaction<T>(
+  fn: (tx: TxClient) => Promise<T>
+): Promise<T> {
+  const client: PoolClient = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const tx: TxClient = {
+      query: async <R>(text: string, params?: unknown[]) => {
+        const result = await client.query(text, params);
+        return result.rows as R[];
+      },
+      queryOne: async <R>(text: string, params?: unknown[]) => {
+        const result = await client.query(text, params);
+        return (result.rows[0] as R) ?? null;
+      },
+      execute: async (text: string, params?: unknown[]) => {
+        const result = await client.query(text, params);
+        return result.rowCount ?? 0;
+      },
+    };
+
+    const result = await fn(tx);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

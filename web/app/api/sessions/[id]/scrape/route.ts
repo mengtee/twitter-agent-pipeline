@@ -3,6 +3,8 @@ import { scrapeSearch, type ScrapeProgress } from "@pipeline/scraper/grok-scrape
 import { loadSession, saveSession } from "@pipeline/session/store.js";
 import type { ScrapedTweet } from "@pipeline/types.js";
 
+export const maxDuration = 300;
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -27,9 +29,13 @@ export async function POST(
         );
       };
 
+      const heartbeat = setInterval(() => {
+        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+      }, 15_000);
+
       try {
         const config = loadConfig();
-        const allSearches = loadSearches();
+        const allSearches = await loadSearches();
         const searches = allSearches.filter((s) =>
           session.searchNames.includes(s.name)
         );
@@ -103,6 +109,7 @@ export async function POST(
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },

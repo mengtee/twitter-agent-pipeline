@@ -2,6 +2,8 @@ import { loadConfig, loadPersonaBySlug, loadDefaultPersona } from "@pipeline/con
 import { generateSamples } from "@pipeline/session/generator.js";
 import { loadSession, saveSession } from "@pipeline/session/store.js";
 
+export const maxDuration = 300;
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -38,11 +40,15 @@ export async function POST(
         );
       };
 
+      const heartbeat = setInterval(() => {
+        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+      }, 15_000);
+
       try {
         const config = loadConfig();
         const persona = session.personaSlug
-          ? loadPersonaBySlug(session.personaSlug)
-          : loadDefaultPersona();
+          ? await loadPersonaBySlug(session.personaSlug)
+          : await loadDefaultPersona();
 
         const selectedTweets = session.scrapedTweets.filter((t) =>
           session.selectedTweetIds.includes(t.id)
@@ -96,6 +102,7 @@ export async function POST(
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },

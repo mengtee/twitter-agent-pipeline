@@ -1,6 +1,7 @@
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 import { randomUUID } from "node:crypto";
 import type { TrendingTweet, CommentSuggestion, PersonaConfig } from "../types.js";
+import { MAX_RETRIES, sleep, isRetryableError, getRetryDelay } from "../retry.js";
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4";
@@ -130,27 +131,64 @@ export async function generateCommentSuggestions(
   const systemPrompt = buildCommentSystemPrompt(persona);
   const userPrompt = buildCommentUserPrompt(tweet);
 
-  const response = await axios.post<OpenRouterResponse>(
-    OPENROUTER_URL,
-    {
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.8,
-      max_tokens: 800,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/twitter-agent-pipeline",
-        "X-Title": "Tweet Pipeline - Comment Generator",
-      },
-      timeout: 30_000,
+  let response;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`[CommentGen] Attempt ${attempt}/${MAX_RETRIES} (model: ${model})`);
+
+      response = await axios.post<OpenRouterResponse>(
+        OPENROUTER_URL,
+        {
+          model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.8,
+          max_tokens: 800,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/twitter-agent-pipeline",
+            "X-Title": "Tweet Pipeline - Comment Generator",
+          },
+          timeout: 30_000,
+        }
+      );
+      break; // Success
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+
+      if (err instanceof AxiosError) {
+        const status = err.response?.status;
+        const errorBody = err.response?.data;
+
+        console.error(`[CommentGen] OpenRouter error (attempt ${attempt}/${MAX_RETRIES}):`);
+        console.error(`  Status: ${status ?? "N/A"}`);
+        console.error(`  Body: ${JSON.stringify(errorBody ?? {})}`);
+
+        if (isRetryableError(err) && attempt < MAX_RETRIES) {
+          const delay = getRetryDelay(err, attempt);
+          console.log(`[CommentGen] Retrying in ${delay}ms...`);
+          await sleep(delay);
+          continue;
+        }
+
+        const detail = errorBody ? JSON.stringify(errorBody) : err.message;
+        throw new Error(`OpenRouter API ${status ?? "error"}: ${detail}`);
+      }
+
+      throw err;
     }
-  );
+  }
+
+  if (!response) {
+    throw lastError ?? new Error("OpenRouter request failed after retries");
+  }
 
   const content = response.data.choices?.[0]?.message?.content ?? "";
   const parsed = parseCommentResponse(content);

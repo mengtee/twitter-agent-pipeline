@@ -15,7 +15,7 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
-    const persona = loadPersonaBySlug(slug);
+    const persona = await loadPersonaBySlug(slug);
     return NextResponse.json(persona);
   } catch (err) {
     return NextResponse.json(
@@ -34,17 +34,17 @@ export async function PUT(
     const body = await request.json();
     const persona = PersonaConfigSchema.parse(body);
 
-    // If the name changed, the slug changes too — delete old file
+    // If the name changed, the slug changes too — delete old row
     const newSlug = personaSlug(persona.name);
     if (newSlug !== slug) {
-      deletePersona(slug);
+      await deletePersona(slug);
       // Update default if it pointed to the old slug
-      if (getDefaultPersonaSlug() === slug) {
-        setDefaultPersonaSlug(newSlug);
+      if ((await getDefaultPersonaSlug()) === slug) {
+        await setDefaultPersonaSlug(newSlug);
       }
     }
 
-    const savedSlug = savePersona(persona);
+    const savedSlug = await savePersona(persona);
     return NextResponse.json({ success: true, slug: savedSlug });
   } catch (err) {
     return NextResponse.json(
@@ -60,13 +60,13 @@ export async function DELETE(
 ) {
   try {
     const { slug } = await params;
-    const deleted = deletePersona(slug);
+    const deleted = await deletePersona(slug);
     if (!deleted) {
       return NextResponse.json({ error: "Persona not found" }, { status: 404 });
     }
     // Clear default if it was this persona
-    if (getDefaultPersonaSlug() === slug) {
-      setDefaultPersonaSlug("");
+    if ((await getDefaultPersonaSlug()) === slug) {
+      await setDefaultPersonaSlug("");
     }
     return NextResponse.json({ success: true });
   } catch (err) {

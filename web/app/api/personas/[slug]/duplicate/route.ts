@@ -12,12 +12,12 @@ export async function POST(
 ) {
   try {
     const { slug } = await params;
-    const original = loadPersonaBySlug(slug);
+    const original = await loadPersonaBySlug(slug);
 
     // Find a unique name
     let copyName = `${original.name} (Copy)`;
     let copySlug = personaSlug(copyName);
-    const existing = new Set(listPersonas().map((p) => p.slug));
+    const existing = new Set((await listPersonas()).map((p) => p.slug));
     let counter = 2;
     while (existing.has(copySlug)) {
       copyName = `${original.name} (Copy ${counter})`;
@@ -25,7 +25,7 @@ export async function POST(
       counter++;
     }
 
-    const savedSlug = savePersona({ ...original, name: copyName });
+    const savedSlug = await savePersona({ ...original, name: copyName });
     return NextResponse.json({ success: true, slug: savedSlug, name: copyName });
   } catch (err) {
     return NextResponse.json(

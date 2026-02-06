@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { query, queryOne } from "../db/query.js";
+import { query, queryOne, withTransaction } from "../db/query.js";
+import type { TxClient } from "../db/query.js";
 import type {
   Session,
   SessionStage,
@@ -144,135 +145,126 @@ export async function loadSession(id: string): Promise<Session> {
 }
 
 /**
- * Save a session (update all fields).
+ * Build a multi-row INSERT query with parameterized values.
+ */
+function buildMultiInsert(
+  baseQuery: string,
+  rows: unknown[][],
+  columnsPerRow: number
+): { text: string; params: unknown[] } {
+  const params: unknown[] = [];
+  const valueGroups: string[] = [];
+  for (const row of rows) {
+    const offset = params.length;
+    const placeholders = row.map((_, i) => `$${offset + i + 1}`);
+    valueGroups.push(`(${placeholders.join(", ")})`);
+    params.push(...row);
+  }
+  return { text: `${baseQuery} VALUES ${valueGroups.join(", ")}`, params };
+}
+
+/**
+ * Save a session (update all fields) inside a transaction.
  */
 export async function saveSession(session: Session): Promise<void> {
-  // Update main session record
-  await query(
-    `UPDATE sessions SET
-       name = $2,
-       stage = $3,
-       search_names = $4,
-       user_prompt = $5,
-       persona_slug = $6,
-       chosen_sample_id = $7,
-       final_text = $8,
-       scrape_tokens_input = $9,
-       scrape_tokens_output = $10,
-       analyze_tokens_input = $11,
-       analyze_tokens_output = $12,
-       generate_tokens_input = $13,
-       generate_tokens_output = $14,
-       updated_at = NOW()
-     WHERE id = $1`,
-    [
-      session.id,
-      session.name,
-      session.stage,
-      session.searchNames,
-      session.userPrompt,
-      session.personaSlug ?? null,
-      session.chosenSampleId ?? null,
-      session.finalText ?? null,
-      session.scrapeTokens?.input ?? 0,
-      session.scrapeTokens?.output ?? 0,
-      session.analyzeTokens?.input ?? 0,
-      session.analyzeTokens?.output ?? 0,
-      session.generateTokens?.input ?? 0,
-      session.generateTokens?.output ?? 0,
-    ]
-  );
-
-  // Sync scraped tweets (delete and re-insert)
-  await query(`DELETE FROM session_tweets WHERE session_id = $1`, [session.id]);
-  if (session.scrapedTweets.length > 0) {
-    for (const tweet of session.scrapedTweets) {
-      await query(
-        `INSERT INTO session_tweets (id, session_id, text, author, handle, likes, retweets, views, replies, url, image_urls, posted_at, scraped_at, search_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-         ON CONFLICT (id, session_id) DO UPDATE SET
-           text = EXCLUDED.text,
-           likes = EXCLUDED.likes,
-           retweets = EXCLUDED.retweets,
-           views = EXCLUDED.views,
-           replies = EXCLUDED.replies`,
-        [
-          tweet.id,
-          session.id,
-          tweet.text,
-          tweet.author,
-          tweet.handle,
-          tweet.likes,
-          tweet.retweets,
-          tweet.views,
-          tweet.replies,
-          tweet.url,
-          tweet.imageUrls,
-          new Date(tweet.postedAt),
-          new Date(tweet.scrapedAt),
-          tweet.searchName,
-        ]
-      );
-    }
-  }
-
-  // Sync analysis
-  if (session.analysis) {
-    await query(
-      `INSERT INTO session_analyses (session_id, summary, trending_topics, topics_with_tweets, content_ideas)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (session_id) DO UPDATE SET
-         summary = EXCLUDED.summary,
-         trending_topics = EXCLUDED.trending_topics,
-         topics_with_tweets = EXCLUDED.topics_with_tweets,
-         content_ideas = EXCLUDED.content_ideas`,
+  await withTransaction(async (tx) => {
+    // Update main session record
+    await tx.query(
+      `UPDATE sessions SET
+         name = $2,
+         stage = $3,
+         search_names = $4,
+         user_prompt = $5,
+         persona_slug = $6,
+         chosen_sample_id = $7,
+         final_text = $8,
+         scrape_tokens_input = $9,
+         scrape_tokens_output = $10,
+         analyze_tokens_input = $11,
+         analyze_tokens_output = $12,
+         generate_tokens_input = $13,
+         generate_tokens_output = $14,
+         updated_at = NOW()
+       WHERE id = $1`,
       [
         session.id,
-        session.analysis.summary,
-        session.analysis.trendingTopics,
-        JSON.stringify(session.analysis.topicsWithTweets),
-        JSON.stringify(session.analysis.contentIdeas),
+        session.name,
+        session.stage,
+        session.searchNames,
+        session.userPrompt,
+        session.personaSlug ?? null,
+        session.chosenSampleId ?? null,
+        session.finalText ?? null,
+        session.scrapeTokens?.input ?? 0,
+        session.scrapeTokens?.output ?? 0,
+        session.analyzeTokens?.input ?? 0,
+        session.analyzeTokens?.output ?? 0,
+        session.generateTokens?.input ?? 0,
+        session.generateTokens?.output ?? 0,
       ]
     );
-  } else {
-    await query(`DELETE FROM session_analyses WHERE session_id = $1`, [
-      session.id,
-    ]);
-  }
 
-  // Sync samples
-  await query(`DELETE FROM session_samples WHERE session_id = $1`, [
-    session.id,
-  ]);
-  if (session.samples.length > 0) {
-    for (const sample of session.samples) {
-      await query(
-        `INSERT INTO session_samples (id, session_id, text, confidence, hashtags, image_suggestion)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+    // Sync scraped tweets (delete + multi-row insert)
+    await tx.execute(`DELETE FROM session_tweets WHERE session_id = $1`, [session.id]);
+    if (session.scrapedTweets.length > 0) {
+      const { text, params } = buildMultiInsert(
+        `INSERT INTO session_tweets (id, session_id, text, author, handle, likes, retweets, views, replies, url, image_urls, posted_at, scraped_at, search_name)`,
+        session.scrapedTweets.map((t) => [
+          t.id, session.id, t.text, t.author, t.handle,
+          t.likes, t.retweets, t.views, t.replies,
+          t.url, t.imageUrls, new Date(t.postedAt), new Date(t.scrapedAt), t.searchName,
+        ]),
+        14
+      );
+      await tx.execute(text, params);
+    }
+
+    // Sync analysis
+    if (session.analysis) {
+      await tx.query(
+        `INSERT INTO session_analyses (session_id, summary, trending_topics, topics_with_tweets, content_ideas)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (session_id) DO UPDATE SET
+           summary = EXCLUDED.summary,
+           trending_topics = EXCLUDED.trending_topics,
+           topics_with_tweets = EXCLUDED.topics_with_tweets,
+           content_ideas = EXCLUDED.content_ideas`,
         [
-          sample.id,
           session.id,
-          sample.text,
-          sample.confidence,
-          sample.hashtags,
-          sample.imageSuggestion ?? null,
+          session.analysis.summary,
+          session.analysis.trendingTopics,
+          JSON.stringify(session.analysis.topicsWithTweets),
+          JSON.stringify(session.analysis.contentIdeas),
         ]
       );
+    } else {
+      await tx.execute(`DELETE FROM session_analyses WHERE session_id = $1`, [session.id]);
     }
-  }
 
-  // Sync selected tweets
-  await query(`DELETE FROM session_selected_tweets WHERE session_id = $1`, [
-    session.id,
-  ]);
-  if (session.selectedTweetIds.length > 0) {
-    for (const tweetId of session.selectedTweetIds) {
-      await query(
-        `INSERT INTO session_selected_tweets (session_id, tweet_id) VALUES ($1, $2)`,
-        [session.id, tweetId]
+    // Sync samples (delete + multi-row insert)
+    await tx.execute(`DELETE FROM session_samples WHERE session_id = $1`, [session.id]);
+    if (session.samples.length > 0) {
+      const { text, params } = buildMultiInsert(
+        `INSERT INTO session_samples (id, session_id, text, confidence, hashtags, image_suggestion)`,
+        session.samples.map((s) => [
+          s.id, session.id, s.text, s.confidence, s.hashtags, s.imageSuggestion ?? null,
+        ]),
+        6
       );
+      await tx.execute(text, params);
     }
-  }
+
+    // Sync selected tweets (delete + multi-row insert)
+    await tx.execute(`DELETE FROM session_selected_tweets WHERE session_id = $1`, [session.id]);
+    if (session.selectedTweetIds.length > 0) {
+      const { text, params } = buildMultiInsert(
+        `INSERT INTO session_selected_tweets (session_id, tweet_id)`,
+        session.selectedTweetIds.map((tweetId) => [session.id, tweetId]),
+        2
+      );
+      await tx.execute(text, params);
+    }
+  });
 }
 
 /**

@@ -36,7 +36,7 @@ export async function POST(request: Request) {
     }
 
     // Optionally load persona
-    const persona = personaSlug ? loadPersonaBySlug(personaSlug) : undefined;
+    const persona = personaSlug ? await loadPersonaBySlug(personaSlug) : undefined;
 
     // Generate suggestions
     const result = await generateCommentSuggestions(

@@ -3,7 +3,7 @@ import { getDefaultPersonaSlug, setDefaultPersonaSlug } from "@pipeline/config.j
 
 export async function GET() {
   try {
-    const slug = getDefaultPersonaSlug();
+    const slug = await getDefaultPersonaSlug();
     return NextResponse.json({ slug });
   } catch (err) {
     return NextResponse.json(
@@ -20,7 +20,7 @@ export async function PUT(request: Request) {
     if (!slug) {
       return NextResponse.json({ error: "slug is required" }, { status: 400 });
     }
-    setDefaultPersonaSlug(slug);
+    await setDefaultPersonaSlug(slug);
     return NextResponse.json({ success: true, slug });
   } catch (err) {
     return NextResponse.json(

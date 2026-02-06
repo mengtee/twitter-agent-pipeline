@@ -28,6 +28,8 @@ export default function SearchesPage() {
   const [editingName, setEditingName] = useState<string | null>(null);
   const [form, setForm] = useState<SearchFormData>(emptyForm);
   const [error, setError] = useState<string | null>(null);
+  const [deletingName, setDeletingName] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const openAdd = () => {
     setForm(emptyForm);
@@ -68,31 +70,46 @@ export default function SearchesPage() {
       return;
     }
 
-    const url = editingName
-      ? `/api/searches/${encodeURIComponent(editingName)}`
-      : "/api/searches";
-    const method = editingName ? "PUT" : "POST";
+    setIsSubmitting(true);
+    try {
+      const url = editingName
+        ? `/api/searches/${encodeURIComponent(editingName)}`
+        : "/api/searches";
+      const method = editingName ? "PUT" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error ?? "Failed to save");
-      return;
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Failed to save");
+        return;
+      }
+
+      setShowForm(false);
+      mutate();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setShowForm(false);
-    mutate();
   };
 
   const handleDelete = async (name: string) => {
     if (!confirm(`Delete search "${name}"?`)) return;
-    await fetch(`/api/searches/${encodeURIComponent(name)}`, { method: "DELETE" });
-    mutate();
+    setDeletingName(name);
+    try {
+      const res = await fetch(`/api/searches/${encodeURIComponent(name)}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Failed to delete: ${res.statusText}`);
+      mutate();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete search");
+    } finally {
+      setDeletingName(null);
+    }
   };
 
   return (
@@ -185,9 +202,10 @@ export default function SearchesPage() {
             <div className="flex gap-2 pt-2">
               <button
                 onClick={handleSubmit}
-                className="px-3 py-1.5 text-sm font-medium rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                disabled={isSubmitting}
+                className="px-3 py-1.5 text-sm font-medium rounded bg-blue-600 text-white hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {editingName ? "Update" : "Add"}
+                {isSubmitting ? "Saving..." : editingName ? "Update" : "Add"}
               </button>
               <button
                 onClick={() => setShowForm(false)}
@@ -234,9 +252,10 @@ export default function SearchesPage() {
                   </button>
                   <button
                     onClick={() => handleDelete(search.name)}
-                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-red-400 hover:bg-red-900/30 transition-colors"
+                    disabled={deletingName === search.name}
+                    className="px-2 py-1 text-xs rounded bg-zinc-800 text-red-400 hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Delete
+                    {deletingName === search.name ? "..." : "Delete"}
                   </button>
                 </div>
               </div>

@@ -2,6 +2,8 @@ import { loadConfig } from "@pipeline/config.js";
 import { analyzeTweets } from "@pipeline/session/analyzer.js";
 import { loadSession, saveSession } from "@pipeline/session/store.js";
 
+export const maxDuration = 300;
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -30,6 +32,10 @@ export async function POST(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
         );
       };
+
+      const heartbeat = setInterval(() => {
+        controller.enqueue(encoder.encode(": heartbeat\n\n"));
+      }, 15_000);
 
       try {
         const config = loadConfig();
@@ -65,6 +71,7 @@ export async function POST(
           message: err instanceof Error ? err.message : String(err),
         });
       } finally {
+        clearInterval(heartbeat);
         controller.close();
       }
     },
